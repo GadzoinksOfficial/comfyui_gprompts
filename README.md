@@ -1,3 +1,4 @@
+```
 This is another dyanmic prompts node for Comfyui
 I found most of the ones out there to be either too complicated or too limiting,
 so I wrote my own
@@ -51,4 +52,5 @@ TODO:
  need to add support for wildcard files that include other wildcard files
  trying to find a way to save the computed prompt with the extra data written to EXIF
 
+```
 
