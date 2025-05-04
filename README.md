@@ -2,18 +2,21 @@ This is another dyanmic prompts node for Comfyui
 I found most of the ones out there to be either too complicated or too limiting,
 so I wrote my own
 
-basics
+Basics
 
-create a grpompt node and connect its output to a clip node text input (you may need to nable text input)
+create a grpompt node and connect its output to a clip node text input
+(you may need to enable text input on the clip node)
 
-format of a dynamic prompt
-{ cat | dog | jackalope  }     random selection 
+Format of a dynamic prompt
+{ cat | dog | jackalope  }     random selection
 {{ green | yellow | red }}      sequential seletion
 
-If you generate 4 images with " a stop light showing {{ green | yellow | red }}"
+If you generate 4 images with "a stop light showing {{ green | yellow | red }}"
 you will get a green light image, yellow, red, and then another green.
 
-wildcards
+If you use "a stop light showing { green | yellow | red }", each image will have a 33% chance of any color.
+
+Wildcards
 
 you can use a wildcard file with a list of options
 "a woman with {{__hair_color__}} {{__hair_style__}} hair"
@@ -40,6 +43,8 @@ instead of text you can use a json file,  season.json
  simple --   { [“summer”,”winter”,”fall”,”spring” ] ) 
  weighted --   { [ { “summer” : 6 } ,  { “spring” : 4 } ,  { “fall ” : 3 } ,  { “winter” : 1 }  ] }
 weighted is only relevant to {} random selection, for {{}} sequential you will get all 4 seasons.
+
+A wildcard reference to __hair__hairstyles__ , will use the file models/wildcards/hair/hairstyles.txt ( or .json )
 
 
 TODO:
