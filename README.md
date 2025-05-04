@@ -5,7 +5,7 @@ too complicated or too limiting, so I wrote my own.
 
 Basics
 
-create a grpompts node and connect its output
+create a gprompts node and connect its output
 to a clip node text input
 (you may need to enable text input on the clip node)
 
