@@ -42,7 +42,7 @@ mohawk
 you will have 12 combinations. Set comfyui to generate 12 images and you will see all combinations
 
 json wildcard files
-instead of text you can use a json file. For example  season.json
+instead of text you can use a json file. For example  seasons.json
  simple --   { ["summer","winter","fall","spring" ] } 
  weighted --   { [ { "summer" : 6 } ,  { "spring" : 4 } ,  {"fall" : 3 } ,  { "winter" : 1 }  ] }
 weighted is only relevant to {} random selection, for {{}} sequential you will get all 4 seasons.
