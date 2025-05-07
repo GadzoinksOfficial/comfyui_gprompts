@@ -1,0 +1,14 @@
+[project]
+name = "gprompts"
+description = "Another dynamic prompt node, designed to be easy to use and support wildcards"
+version = "1.0.0"
+license = {file = "LICENSE"}
+
+[project.urls]
+Repository = "https://github.com/GadzoinksOfficial/comfyui_gprompts"
+#  Used by Comfy Registry https://comfyregistry.org
+
+[tool.comfy]
+PublisherId = ""
+DisplayName = "comfyui_gprompts"
+Icon = ""
