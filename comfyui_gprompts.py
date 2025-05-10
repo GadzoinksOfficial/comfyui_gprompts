@@ -14,8 +14,11 @@ from aiohttp import web
 
 last_processed_result = ""
 
+print("LOADING GPROMPTS")
+
 def dprint(a):
-    print(a)
+    #print(a)
+    pass
 
 class GPrompts:
     def __init__(self):
@@ -45,19 +48,21 @@ class GPrompts:
             "optional": {
                 "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
                 "iteration": ("INT", {"default": -1}),  # -1 means auto-increment
-                "computed_prompt": ("STRING", {"multiline": True, "default": ""}),
+                "computed_prompt": ("STRING", {"multiline": True, "readonly": True,"default": ""}),
             },
             "hidden": {
-                "unique_id": "UNIQUE_ID"
-            }
+            "unique_id": "UNIQUE_ID",
+            "prompt": "PROMPT"  # Add this to get access to the workflow graph
+        }
         }
 
-    RETURN_TYPES = ("STRING","STRING")
-    RETURN_NAMES = ("text", "computed_prompt")
+    RETURN_TYPES = ("STRING","DYNPROMPT")
+    RETURN_NAMES = ("text","dynprompt")
     FUNCTION = "process_dynamic_prompt"
     CATEGORY = "text"
 
-    def process_dynamic_prompt(self, text, seed=0, iteration=-1,computed_prompt="",unique_id=0):
+    def process_dynamic_prompt(self, text, seed=0, iteration=-1,computed_prompt="",unique_id=0,prompt=None):
+        global last_processed_result
         # If text changed, reset the iteration counter
         if self.previous_text != text:
             self.previous_text = text
@@ -78,40 +83,44 @@ class GPrompts:
         # Increment the iteration counter for next time
         if iteration == -1:
             self.current_iteration += 1
-        """
-        dprint(f"process_dynamic_prompt EXIT text:{processed_text}")
-        execution_ctx = comfy.utils.get_current_execution_context()
         
-        if execution_ctx is not None:
-            # Get the current node being executed
-            current_node = execution_ctx.current_node
-            if current_node is not None:
-                # Update the computed_prompt input to show the processed result
-                # This will make it appear in the saved workflow
-                execution_ctx.update_node_input(current_node, "computed_prompt", processed_text)
-# Get access to the current execution context
-        try:
-            execution = getattr(model_management, "current_execution", None)
-            if execution and hasattr(execution, "nodes"):
-                # Find the current node in the execution
-                for node_id, node_data in execution.nodes.items():
-                    if node_data.get("class_type") == "GPrompts" and node_id in execution.outputs:
-                        # Create _meta if it doesn't exist
-                        if "_meta" not in execution.nodes[node_id]:
-                            execution.nodes[node_id]["_meta"] = {}
-                        
-                        # Update _meta with computed result
-                        execution.nodes[node_id]["_meta"]["computed_result"] = processed_text
-                        break
-        except Exception as e:
-            print(f"Failed to update _meta: {e}")
-            pass  # Continue even if this fails
-        """
         last_processed_result = processed_text
-        dprint(f"unique_id:{unique_id}")
+        dprint(f"process_dynamic_prompt:     unique_id:{unique_id}  last_processed_result:{last_processed_result} QAQ")
+        # send a message to front end so we can update the text in UI
         PromptServer.instance.send_sync("gprompts_executed", 
-                                {"node_id": unique_id, "result": processed_text})
-        return (processed_text,processed_text)
+                                {"node_id": unique_id, "result": processed_text} )
+        # Create and populate a DynamicPrompt object with our data
+        # have to wire the node together to pass DynamicPrompt
+        dynamic_data = None
+        
+        if prompt is not None:
+            from comfy_execution.graph import DynamicPrompt
+            dynamic_data = DynamicPrompt(prompt)
+            # Store our processed data as an ephemeral node
+            metadata_node_id = "computed_prompt"
+            nodeInfo = {
+                "class_type": "GPromptsData",
+                "data": {
+                    "original_text": text,
+                    "computed_prompt": processed_text,
+                    "seed": seed,
+                    "iteration": self.current_iteration
+                }
+            }
+            dprint(f"nodeInfo:{nodeInfo} QAQ")
+            dynamic_data.add_ephemeral_node(
+                node_id=metadata_node_id,
+                node_info=nodeInfo,
+                parent_id=unique_id,
+                display_id=unique_id
+            )
+        # This is a lot simpler just stick in node._meta, problem is if we have multiple gprompts in a workflow
+        if prompt is not None:
+            node = prompt[unique_id]
+            meta = node.get("_meta",{})
+            meta["computed_prompt"] = processed_text
+            node["_meta"] = meta
+        return (processed_text,dynamic_data)
 
     def parse_dynamic_prompt(self, text):
         # First, process all sequential blocks and generate combinations if needed
@@ -221,9 +230,9 @@ class GPrompts:
                 with open(json_path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
                 
-                if isinstance(data, list):
+                if isinstance(data, list): # ["one","two"]
                     # Handle both simple lists and weighted lists
-                    if data and isinstance(data[0], dict):
+                    if data and isinstance(data[0], dict): # [ {"one":60},{"two":40} ]
                         # Weighted list format
                         weighted_options = {}
                         for item in data:
@@ -233,9 +242,29 @@ class GPrompts:
                     else:
                         # Simple list format
                         options = data
+                elif isinstance(data, dict): # {"whatever:["one","two"]"}
+                    # Handle object format - find the first array value
+                    for key, value in data.items():
+                        if isinstance(value, list):
+                            # Found an array value, use it
+                            if value and isinstance(value[0], dict):
+                                # Weighted list format
+                                weighted_options = {}
+                                for item in value:
+                                    for option, weight in item.items():
+                                        weighted_options[option] = weight
+                                options = weighted_options
+                            else:
+                                # Simple list format
+                                options = value
+                            break  # Use the first array found
+                    else:
+                        # No array found in the object
+                        print(f"No array value found in JSON object: {json_path}")
+                        options = []
             except json.JSONDecodeError:
                 print(f"Error parsing JSON file: {json_path}")
-        
+        dprint(f"options:{options}")
         # If no JSON or empty result, try TXT
         if not options:
             txt_path = self.find_wildcard_file(wildcard_path, ".txt")
@@ -279,7 +308,12 @@ class GPrompts:
                 wildcard_options = self.load_wildcard(wildcard_path)
                 dprint(f"Wildcard options: {wildcard_options}")
                 
-                if wildcard_options:
+                if isinstance(wildcard_options, dict):
+                    # Weighted selection - separate keys and weights
+                    ks = list(wildcard_options.keys())
+                    vs = list(wildcard_options.values())
+                    return random.choices(ks, weights=vs, k=1)[0]
+                else:
                     return random.choice(wildcard_options)
                 return ""
             else:
@@ -420,7 +454,10 @@ class GPrompts:
 
     @PromptServer.instance.routes.get("/gprompts/prompt")
     async def prompt(request):
-        return web.json_response( { "prompt":last_processed_result } );
+        global last_processed_result
+        #dprint(f"@PromptServer.instance.routes.get(/gprompts/prompt)   last_processed_result:{last_processed_result} ")
+        return web.json_response( { "prompt":"dummy value" } );
+        #eturn web.json_response( { "prompt":last_processed_result } );
 
 # Node registration
 NODE_CLASS_MAPPINGS = {
