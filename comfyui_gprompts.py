@@ -117,6 +117,7 @@ class GPrompts:
         # This is a lot simpler just stick in node._meta, problem is if we have multiple gprompts in a workflow
         if prompt is not None:
             node = prompt[unique_id]
+            node["inputs"]["computed_prompt"] = processed_text  # update computed_prompt, value passed to us was previous version
             meta = node.get("_meta",{})
             meta["computed_prompt"] = processed_text
             node["_meta"] = meta
