@@ -308,6 +308,8 @@ class GPrompts:
                 # Load wildcards directly with the full path
                 wildcard_options = self.load_wildcard(wildcard_path)
                 dprint(f"Wildcard options: {wildcard_options}")
+                if not wildcard_options:
+                    return ""
                 
                 if isinstance(wildcard_options, dict):
                     # Weighted selection - separate keys and weights
