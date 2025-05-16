@@ -9,6 +9,6 @@ Repository = "https://github.com/GadzoinksOfficial/comfyui_gprompts"
 #  Used by Comfy Registry https://comfyregistry.org
 
 [tool.comfy]
-PublisherId = ""
+PublisherId = "gadzoinksofficial"
 DisplayName = "comfyui_gprompts"
 Icon = ""
