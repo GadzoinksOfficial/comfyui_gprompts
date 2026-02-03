@@ -8,9 +8,13 @@ import folder_paths
 import comfy.model_management as model_management
 import server
 import comfy
+from datetime import datetime
 from server import PromptServer
 import aiohttp
 from aiohttp import web
+from nodes import PreviewImage, SaveImage
+#from ..core import CATEGORY, CONFIG, BOOLEAN, METADATA_RAW,TEXTS, setWidgetValues, logger, getResolutionByTensor, get_size
+#sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), "comfy"))
 
 last_processed_result = ""
 
@@ -20,6 +24,89 @@ def dprint(a):
     print(a)
     pass
 
+class GImageSaveWithExtraMetadata(SaveImage):
+    def __init__(self):
+        super().__init__()
+        self.data_cached = None
+        self.data_cached_text = None
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                # if it is required, in next node does not receive any value even the cache!
+                "image": ("IMAGE",),
+                "filename_prefix": ("STRING", {"default": "ComfyUI"}),
+                "computed_prompt": ("STRING", {"default": "computed_prompt"})
+            },
+            "hidden": {
+                "prompt": "PROMPT",
+                "extra_pnginfo": "EXTRA_PNGINFO",
+            },
+        }
+
+    CATEGORY = "image"
+    RETURN_TYPES = ()
+    OUTPUT_NODE = True
+
+    FUNCTION = "execute"
+
+    def execute(self, image=None, filename_prefix="ComfyUI", computed_prompt=None, prompt = None,extra_pnginfo=None):
+        if not extra_pnginfo:
+            extra_pnginfo_new = {}
+        else:
+            extra_pnginfo_new = extra_pnginfo.copy()
+        if computed_prompt:
+            extra_pnginfo_new["computed_prompt"] = computed_prompt
+
+        if not "%" in filename_prefix:
+            filename_prefix = datetime.now().strftime("%Y-%m-%d") + os.path.sep + filename_prefix
+
+        # Add note node to workflow
+        if computed_prompt and prompt and "workflow" in extra_pnginfo_new:
+            workflow = extra_pnginfo_new["workflow"]
+            self.add_note_node_to_workflow(workflow, computed_prompt)
+
+        # Save image
+        saved = super().save_images(image, filename_prefix, prompt, extra_pnginfo_new)
+        return saved
+
+    def add_note_node_to_workflow(self, workflow, computed_prompt=None):
+        """Helper to add a note node to workflow"""
+        nodes = workflow.get("nodes", [])
+        
+        # Get next available node ID
+        max_id = 0
+        for node in nodes:
+            node_id = node.get("id", "0")
+            try:
+                node_id_int = int(node_id)
+                max_id = max(max_id, node_id_int)
+            except (ValueError, TypeError):
+                continue
+        
+        note_node_id = str(max_id + 1)
+        note_text = f'Image created with prompt "{computed_prompt}"' 
+        # Create note node
+        note_node = {
+            "id": note_node_id,
+            "type": "Note",
+            "pos": [50, 50],  # Top-left corner
+            "size": {"0": 425, "1": 180},
+            "flags": {},
+            "order": len(nodes) + 1,
+            "mode": 0,
+            "inputs": [],
+            "outputs": [],
+            "properties": {"Node name for S&R": "Note"},
+            "widgets_values": [note_text]
+        }
+        
+        workflow["nodes"].append(note_node)
+           
+#
+#
+#
 class GPrompts:
     def __init__(self):
         self.previous_text = None
@@ -56,8 +143,8 @@ class GPrompts:
         }
         }
 
-    RETURN_TYPES = ("STRING","DYNPROMPT")
-    RETURN_NAMES = ("text","dynprompt")
+    RETURN_TYPES = ("STRING","DYNPROMPT","STRING","INT")
+    RETURN_NAMES = ("text","dynprompt","computed_prompt","seed")
     FUNCTION = "process_dynamic_prompt"
     CATEGORY = "text"
 
@@ -121,7 +208,7 @@ class GPrompts:
             meta = node.get("_meta",{})
             meta["computed_prompt"] = processed_text
             node["_meta"] = meta
-        return (processed_text,dynamic_data)
+        return (processed_text,dynamic_data,processed_text,seed)
 
     def parse_dynamic_prompt(self, text):
         # First, process all sequential blocks and generate combinations if needed
@@ -464,10 +551,12 @@ class GPrompts:
 
 # Node registration
 NODE_CLASS_MAPPINGS = {
-    "GPrompts": GPrompts
+    "GPrompts": GPrompts,
+    "GPrompts Save Image": GImageSaveWithExtraMetadata
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "GPrompts": "Dynamic Prompts"
+    "GPrompts": "Dynamic Prompts",
+    "GPrompts Save Image": "Save Image with extra GPrompts Metadata"
 }
 

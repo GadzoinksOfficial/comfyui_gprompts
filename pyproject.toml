@@ -1,8 +1,8 @@
 [project]
 name = "gprompts"
-description = "Another dynamic prompt node, designed to be easy to use and support wildcards"
-version = "1.0.0"
-license = {file = "LICENSE"}
+description = "Another dynamic prompts node, designed to be easy to use and support wildcards"
+version = "2.0.0"
+license = {text = "MIT"}
 
 [project.urls]
 Repository = "https://github.com/GadzoinksOfficial/comfyui_gprompts"

@@ -2,7 +2,7 @@ import { api } from "../../scripts/api.js";
 import { app } from "../../scripts/app.js";
 
 function dprint(...args) {
-	console.log(...args);
+	// console.log(...args);
 }
 
 app.registerExtension( {
