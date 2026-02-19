@@ -2,24 +2,311 @@ import os
 import re
 import json
 import random
+import socket
+import uuid
+import sys
 from pathlib import Path
 from collections import defaultdict
 import folder_paths
 import comfy.model_management as model_management
 import server
 import comfy
+from datetime import datetime
 from server import PromptServer
 import aiohttp
+import platform
 from aiohttp import web
+from nodes import PreviewImage, SaveImage
+#from ..core import CATEGORY, CONFIG, BOOLEAN, METADATA_RAW,TEXTS, setWidgetValues, logger, getResolutionByTensor, get_size
+#sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), "comfy"))
+
+# Web directory for documentation files
+WEB_DIRECTORY = "./web"
 
 last_processed_result = ""
 
 print("LOADING GPROMPTS")
 
 def dprint(a):
-    #print(a)
+    print(a)
     pass
+"""
+            "optional": {
+                "notes": ("*", {
+                    "default": "",
+                    "tooltip": "text for notes node that is embedded in image"
+                }),
+                "computed_prompt": ("STRING", {
+                    "default": "",
+                    "tooltip": "The computed prompt text to embed in image metadata (use this OR notes)"
+                })
+            },
+"""
+class GImageSaveWithExtraMetadata(SaveImage):
+    def __init__(self):
+        super().__init__()
+        self.data_cached = None
+        self.data_cached_text = None
 
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                # if it is required, in next node does not receive any value even the cache!
+                "image": ("IMAGE", {
+                    "tooltip": "Input image to save with metadata"
+                }),
+                "filename_prefix": ("STRING", {
+                    "default": "ComfyUI",
+                    "tooltip": "Prefix for the output filename (supports $variables for dynamic naming)"
+                })
+            },
+            "optional": {
+                "notes": ("*", {
+                    "default": "",
+                    "tooltip": "Text for notes node that is embedded in saved image"
+                }),
+                "computed_prompt": ("*", {
+                    "default": "",
+                    "tooltip": "The computed prompt from Gprompts Node to embed in saved image (use this OR notes)"
+                })
+            },
+            "hidden": {
+                "prompt": "PROMPT",
+                "extra_pnginfo": "EXTRA_PNGINFO",
+            },
+        }
+
+    CATEGORY = "image"
+    RETURN_TYPES = ()
+    OUTPUT_NODE = True
+    FUNCTION = "execute"
+    
+    DESCRIPTION = (
+        "Saves an image with additional metadata embedded in the PNG info. "
+        "Can include computed prompts and notes that will be stored in the image file "
+        "creates a new Notes node and then saves with that in the workflow."
+    )
+
+    #def execute(self, image=None, filename_prefix="ComfyUI",  prompt = None,extra_pnginfo=None):
+    def execute(self, image=None, filename_prefix="ComfyUI", notes=None, computed_prompt=None, prompt = None,extra_pnginfo=None):
+        if not extra_pnginfo:
+            extra_pnginfo_new = {}
+        else:
+            extra_pnginfo_new = extra_pnginfo.copy()
+        note_text = None
+        if computed_prompt:
+            dprint("found computed_prompt")
+            extra_pnginfo_new["computed_prompt"] = computed_prompt
+            note_text = f'Image created with prompt "{computed_prompt}"'
+        if notes and not computed_prompt:
+            dprint("found notes")
+            note_text = notes
+
+        if not "%" in filename_prefix:
+            filename_prefix = datetime.now().strftime("%Y-%m-%d") + os.path.sep + filename_prefix
+
+        # Add note node to workflow
+        if note_text and prompt and "workflow" in extra_pnginfo_new:
+            workflow = extra_pnginfo_new["workflow"]
+            self.add_note_node_to_workflow(workflow, note_text)
+
+        # Save image
+        saved = super().save_images(image, filename_prefix, prompt, extra_pnginfo_new)
+        return saved
+
+    def add_note_node_to_workflow(self, workflow, note_text=None):
+        """Helper to add a note node to workflow"""
+        nodes = workflow.get("nodes", [])
+        
+        # Get next available node ID
+        max_id = 0
+        for node in nodes:
+            node_id = node.get("id", "0")
+            try:
+                node_id_int = int(node_id)
+                max_id = max(max_id, node_id_int)
+            except (ValueError, TypeError):
+                continue
+        
+        note_node_id = str(max_id + 1)
+        # Create note node
+        note_node = {
+            "id": note_node_id,
+            "type": "Note",
+            "pos": [50, 50],  # Top-left corner
+            "size": {"0": 425, "1": 180},
+            "flags": {},
+            "order": len(nodes) + 1,
+            "mode": 0,
+            "inputs": [],
+            "outputs": [],
+            "properties": {"Node name for S&R": "Note"},
+            "widgets_values": [note_text]
+        }
+        
+        workflow["nodes"].append(note_node)
+
+# ============================================================================
+# StringFormatter Node - Acts like sprintf
+# ============================================================================
+
+class StringFormatter:
+    def __init__(self):
+        self.counter = 0
+    
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "format_string": ("STRING", {
+                    "multiline": True, 
+                    "default": "The prompt is $a, the seed is $b, width is $c, height is $d. Generated at $datetime on $hostname, Operating system $os",
+                    "tooltip": "Template string with $variables (e.g., $a, $datetime, $hostname). Use $a through $h for inputs."
+                }),
+            },
+            "optional": {
+                "a": ("*", {"default": "", "tooltip": "Input A - any value (automatically converted to string)"}),
+                "b": ("*", {"default": "", "tooltip": "Input B - any value (automatically converted to string)"}),
+                "c": ("*", {"default": "", "tooltip": "Input C - any value (automatically converted to string)"}),
+                "d": ("*", {"default": "", "tooltip": "Input D - any value (automatically converted to string)"}),
+                "e": ("*", {"default": "", "tooltip": "Input E - any value (automatically converted to string)"}),
+                "f": ("*", {"default": "", "tooltip": "Input F - any value (automatically converted to string)"}),
+                "g": ("*", {"default": "", "tooltip": "Input G - any value (automatically converted to string)"}),
+                "h": ("*", {"default": "", "tooltip": "Input H - any value (automatically converted to string)"}),
+            }
+        }
+
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("formatted_string",)
+    FUNCTION = "format_string"
+    CATEGORY = "utils/text"
+    
+    DESCRIPTION = (
+        "Node that builds strings by replacing $variables. "
+        "Supports custom inputs a-h and system variables like $datetime, $hostname, $os, etc. "
+        "Use with GPrompts Save Image to create notes, or anywhere else for creating dynamic filenames, prompts , etc."
+    )
+
+    def get_system_variables(self):
+        """Get predefined system variables"""
+        now = datetime.now()
+        self.counter += 1
+        
+        # Base variables
+        variables = {
+            "datetime": now.strftime("%Y-%m-%d %H:%M:%S"),
+            "date": now.strftime("%Y-%m-%d"),
+            "time": now.strftime("%H:%M:%S"),
+            "hostname": socket.gethostname(),
+            "os": f"{platform.system()} {platform.release()}",
+            "month": now.strftime("%B"),
+            "year": str(now.year),
+            "day": now.strftime("%d"),
+            "timestamp": str(int(now.timestamp())),
+            "timestamp_ms": str(int(now.timestamp() * 1000)),
+            "iso_datetime": now.isoformat(),
+            "time_24h": now.strftime("%H:%M"),
+            "time_12h": now.strftime("%I:%M %p"),
+            "weekday": now.strftime("%A"),
+            "weekday_short": now.strftime("%a"),
+            "month_num": now.strftime("%m"),
+            "day_num": now.strftime("%d"),
+            "year_short": now.strftime("%y"),
+            "hour": now.strftime("%H"),
+            "minute": now.strftime("%M"),
+            "second": now.strftime("%S"),
+            "am_pm": now.strftime("%p"),
+            
+            # Random/Unique
+            "uuid": str(uuid.uuid4()),
+            "uuid_short": str(uuid.uuid4())[:8],
+            "random_hex": format(random.getrandbits(32), '08x'),
+            "random_int": str(random.randint(1000, 9999)),
+            "counter": "{:06d}".format(self.counter),
+            "date_path": now.strftime("%Y/%m/%d"),
+            "datetime_path": now.strftime("%Y%m%d_%H%M%S"),
+            "batch_id": str(int(now.timestamp() * 1000))[-8:],
+            
+            # System
+            "cpu_count": str(os.cpu_count()),
+            "pid": str(os.getpid()),
+            "platform": platform.platform(),
+            "python_version": platform.python_version(),
+            "machine": platform.machine(),
+            "processor": platform.processor(),
+            "system": platform.system(),
+            "release": platform.release(),
+            "node": platform.node(),
+            "architecture": platform.architecture()[0],
+            "user": os.getenv('USERNAME') or os.getenv('USER') or 'unknown',
+            "cwd": os.getcwd(),
+        }
+        
+        # Add ComfyUI paths if available
+        try:
+            variables.update({
+                "model_dir": folder_paths.models_dir,
+                "input_dir": folder_paths.input_directory,
+                "output_dir": folder_paths.output_directory,
+                "temp_dir": folder_paths.temp_directory,
+            })
+        except:
+            pass
+        
+        # Add GPU info if torch is available
+        if 'torch' in sys.modules:
+            import torch
+            variables["cuda_available"] = str(torch.cuda.is_available())
+            if torch.cuda.is_available():
+                variables["gpu_name"] = torch.cuda.get_device_name(0)
+                variables["gpu_count"] = str(torch.cuda.device_count())
+            else:
+                variables["gpu_name"] = "none"
+                variables["gpu_count"] = "0"
+        
+        return variables
+
+    def format_string(self, format_string, a="", b="", c="", d="", e="", f="", g="", h=""):
+        """
+        Main execution function for the StringFormatter node
+        Acts like sprintf by replacing $variables with their values
+        """
+        # Create dictionary of user inputs
+        user_vars = {
+            "a": str(a) if a != "" else "",
+            "b": str(b) if b != "" else "",
+            "c": str(c) if c != "" else "",
+            "d": str(d) if d != "" else "",
+            "e": str(e) if e != "" else "",
+            "f": str(f) if f != "" else "",
+            "g": str(g) if g != "" else "",
+            "h": str(h) if h != "" else "",
+        }
+        
+        # Get system variables
+        system_vars = self.get_system_variables()
+        
+        # Combine all variables
+        all_vars = {**user_vars, **system_vars}
+        
+        # Replace all $variables in the format string
+        result = format_string
+        
+        # Sort keys by length (longest first) to avoid partial replacements
+        # e.g., $datetime should be replaced before $date
+        sorted_keys = sorted(all_vars.keys(), key=len, reverse=True)
+        
+        for key in sorted_keys:
+            placeholder = f"${key}"
+            if placeholder in result:
+                result = result.replace(placeholder, all_vars[key])
+        
+        return (result,)
+           
+#
+#
+#
 class GPrompts:
     def __init__(self):
         self.previous_text = None
@@ -43,23 +330,46 @@ class GPrompts:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "text": ("STRING", {"multiline": True, "default": ""}),
+                "text": ("STRING", {
+                    "multiline": True, 
+                    "default": "",
+                    "tooltip": "Input text with dynamic blocks: {option1|option2} for random, {{option1|option2}} for sequential, __wildcard__ for wildcard files"
+                }),
             },
             "optional": {
-                "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
-                "iteration": ("INT", {"default": -1}),  # -1 means auto-increment
-                "computed_prompt": ("STRING", {"multiline": True, "readonly": True,"default": ""}),
+                "seed": ("INT", {
+                    "default": 0, 
+                    "min": 0, 
+                    "max": 0xffffffffffffffff,
+                    "tooltip": "Seed for random generation (combined with iteration for reproducibility)"
+                }),
+                "iteration": ("INT", {
+                    "default": -1,
+                    "tooltip": "Iteration counter (-1 for auto-increment, 0+ for fixed iteration)"
+                }),
+                "computed_prompt": ("STRING", {
+                    "multiline": True, 
+                    "readonly": True,
+                    "default": "",
+                    "tooltip": "Output of the processed prompt (read-only)"
+                }),
             },
             "hidden": {
-            "unique_id": "UNIQUE_ID",
-            "prompt": "PROMPT"  # Add this to get access to the workflow graph
-        }
+                "unique_id": "UNIQUE_ID",
+                "prompt": "PROMPT"
+            }
         }
 
-    RETURN_TYPES = ("STRING","DYNPROMPT")
-    RETURN_NAMES = ("text","dynprompt")
+    RETURN_TYPES = ("STRING", "DYNPROMPT", "STRING", "INT")
+    RETURN_NAMES = ("text", "dynprompt", "computed_prompt", "seed")
     FUNCTION = "process_dynamic_prompt"
     CATEGORY = "text"
+    
+    DESCRIPTION = (
+        "Dynamic prompt generator with support for random {}, sequential {{}}, and wildcard __word__ syntax. "
+        "Perfect for creating variations in prompts, batch processing, and A/B testing different prompt combinations. "
+        "Supports weighted options and nested wildcards from text/json files."
+    )
 
     def process_dynamic_prompt(self, text, seed=0, iteration=-1,computed_prompt="",unique_id=0,prompt=None):
         global last_processed_result
@@ -121,7 +431,7 @@ class GPrompts:
             meta = node.get("_meta",{})
             meta["computed_prompt"] = processed_text
             node["_meta"] = meta
-        return (processed_text,dynamic_data)
+        return (processed_text,dynamic_data,processed_text,seed)
 
     def parse_dynamic_prompt(self, text):
         # First, process all sequential blocks and generate combinations if needed
@@ -464,10 +774,15 @@ class GPrompts:
 
 # Node registration
 NODE_CLASS_MAPPINGS = {
-    "GPrompts": GPrompts
+    "GPrompts": GPrompts,
+    "Save Image With Notes": GImageSaveWithExtraMetadata,
+    "String Formatter": StringFormatter
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "GPrompts": "Dynamic Prompts"
+    "GPrompts": "Dynamic Prompts",
+    "Save Image With Notes": "Save Image and add Note node to embedded workflow",
+    "String Formatter": "String Formatter (sprintf)"
 }
 
+__all__ = ['NODE_CLASS_MAPPINGS', 'NODE_DISPLAY_NAME_MAPPINGS']
