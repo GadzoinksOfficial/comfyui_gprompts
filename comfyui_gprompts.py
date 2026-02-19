@@ -96,11 +96,9 @@ class GImageSaveWithExtraMetadata(SaveImage):
             extra_pnginfo_new = extra_pnginfo.copy()
         note_text = None
         if computed_prompt:
-            dprint("found computed_prompt")
             extra_pnginfo_new["computed_prompt"] = computed_prompt
             note_text = f'Image created with prompt "{computed_prompt}"'
         if notes and not computed_prompt:
-            dprint("found notes")
             note_text = notes
 
         if not "%" in filename_prefix:
