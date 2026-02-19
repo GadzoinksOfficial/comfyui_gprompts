@@ -1,9 +1,25 @@
-```
-This is another dyanmic prompts node for Comfyui
-I found most of the ones out there to be either
+# ComfyUI GPrompts Nodes
+
+## Introduction
+This package provides three custom nodes for ComfyUI that enhance prompt generation, string formatting, and image saving capabilities.
+
+## Nodes Overview
+- **GPrompts** - Create dynamic prompts with random or sequential selection. Also support wildcard files.
+- **String Formatter** - Build custom output strings from multiple inputs and system variables
+- **Save Image With Notes** - Save images with embedded workflow notes and metadata
+
+---
+
+## GPrompts Node
+
+### Description
+This is another dyanmic prompts node for Comfyui, I found most of the ones out there to be either
 too complicated or too limiting, so I wrote my own.
 
-Basics
+### Prompt Format Syntax
+
+### Basics
+```
 
 create a gprompts node and connect its output
 to a clip node text input
@@ -18,10 +34,6 @@ you will get a green light image, yellow, red, and then another green.
 
 If you use "a stop light showing { green | yellow | red }", each image will have a 33% chance of any color.
 
-Advanced: there is an optional dynaprompt output that can connect to a node
-that understands how to utiltize it to extract the dynamic prompt and
-the computed prompt.  ( see the gadzoinks custom node as an example }
-Note: Dynaprompts don't seem to be used much so ignore this.
 
 Wildcards
 wildcard files are either .txt or .json and go in comfyui/models/wildcards
@@ -44,7 +56,6 @@ short
 pixie
 mohawk
 
-
 you will have 12 combinations. Set comfyui to generate 12 images and you will
 see all combinations
 
@@ -62,13 +73,28 @@ A wildcard reference to __hair__hairstyles__ , will use the file models/wildcard
 Version 2.0 Update
 Nothing has changed in regards to core functionality, but the node now outputs the computed_prompt and the seed.
 
-There is a new Node called "GPrompts Save Image". This is an extension of the standard Save Image (i.e. it does some stuff and then calls Save Image).
-It has an input for the computed_prompt output from GPrompts node (it will accept any text).
-When the image is saved the computed_prompt is saved in the image's embedded metadata and a Notes node is inserted in the workflow with the computed prompt. Making it easy to see what prompt values were used for a specific image.
-Another feature is images are automatically saved in a date folder YYYY-MM-DD ( if you don't like this include '%' in the filename prefix will disable)
+Advanced:
+there is an optional dynaprompt output that can connect to a node that understands how to utiltize it to extract the dynamic prompt and the computed prompt.   see the gadzoinks custom node as an example .
+Note: Dynaprompts don't seem to be used much so ignore this.
 
 TODO:
  need to add support for wildcard files that include other wildcard files
-
 ```
+
+
+# String Formatter
+
+## Description
+Builds an output strng from supplied inputs and from system variables.
+for example if use connect prompt to A and seed to B, then the format string "generating $a with seed $b on $hostname" you will generate a string a like "generating a smiling cat with seed 12345 on hal2000"
+
+# Save Image With Notes
+
+## Description
+This node modifies a copy of you workflow adding a notes node in the new workflow that is then saved inside the image.
+You can add your own text with 'notes' input
+or wire the  'computed_node' from Gprompts which creates a Note and saves the computed prompt in the exif json
+
+Note: This node uses the standard comfyui Save Image node to do the actual saving.
+
 
