@@ -1,3 +1,9 @@
+"""
+Comfyui Nodes Pack
+From Gadzoinks Official
+https://github.com/GadzoinksOfficial/comfyui_gprompts
+
+"""
 import os
 import re
 import json
@@ -17,31 +23,24 @@ import aiohttp
 import platform
 from aiohttp import web
 from nodes import PreviewImage, SaveImage
-#from ..core import CATEGORY, CONFIG, BOOLEAN, METADATA_RAW,TEXTS, setWidgetValues, logger, getResolutionByTensor, get_size
-#sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), "comfy"))
+from comfy_execution.graph import ExecutionBlocker
+from .immich_importer import ImmichImporter
+
 
 # Web directory for documentation files
-WEB_DIRECTORY = "./web"
+WEB_DIRECTORY = "./web/js"
 
 last_processed_result = ""
+the_settings = {}
 
 print("LOADING GPROMPTS")
 
 def dprint(a):
-    print(a)
+    #print(a)
     pass
-"""
-            "optional": {
-                "notes": ("*", {
-                    "default": "",
-                    "tooltip": "text for notes node that is embedded in image"
-                }),
-                "computed_prompt": ("STRING", {
-                    "default": "",
-                    "tooltip": "The computed prompt text to embed in image metadata (use this OR notes)"
-                })
-            },
-"""
+
+#######
+### Save with Notes
 class GImageSaveWithExtraMetadata(SaveImage):
     def __init__(self):
         super().__init__()
@@ -52,7 +51,6 @@ class GImageSaveWithExtraMetadata(SaveImage):
     def INPUT_TYPES(cls):
         return {
             "required": {
-                # if it is required, in next node does not receive any value even the cache!
                 "image": ("IMAGE", {
                     "tooltip": "Input image to save with metadata"
                 }),
@@ -81,14 +79,13 @@ class GImageSaveWithExtraMetadata(SaveImage):
     RETURN_TYPES = ()
     OUTPUT_NODE = True
     FUNCTION = "execute"
-    
+
     DESCRIPTION = (
         "Saves an image with additional metadata embedded in the PNG info. "
         "Can include computed prompts and notes that will be stored in the image file "
         "creates a new Notes node and then saves with that in the workflow."
     )
 
-    #def execute(self, image=None, filename_prefix="ComfyUI",  prompt = None,extra_pnginfo=None):
     def execute(self, image=None, filename_prefix="ComfyUI", notes=None, computed_prompt=None, prompt = None,extra_pnginfo=None):
         if not extra_pnginfo:
             extra_pnginfo_new = {}
@@ -112,6 +109,201 @@ class GImageSaveWithExtraMetadata(SaveImage):
         # Save image
         saved = super().save_images(image, filename_prefix, prompt, extra_pnginfo_new)
         return saved
+
+    def add_note_node_to_workflow(self, workflow, note_text=None):
+        """Helper to add a note node to workflow"""
+        nodes = workflow.get("nodes", [])
+
+        # Get next available node ID
+        max_id = 0
+        for node in nodes:
+            node_id = node.get("id", "0")
+            try:
+                node_id_int = int(node_id)
+                max_id = max(max_id, node_id_int)
+            except (ValueError, TypeError):
+                continue
+
+        note_node_id = str(max_id + 1)
+        # Create note node
+        note_node = {
+            "id": note_node_id,
+            "type": "Note",
+            "pos": [50, 50],  # Top-left corner
+            "size": {"0": 425, "1": 180},
+            "flags": {},
+            "order": len(nodes) + 1,
+            "mode": 0,
+            "inputs": [],
+            "outputs": [],
+            "properties": {"Node name for S&R": "Note"},
+            "widgets_values": [note_text]
+        }
+
+        workflow["nodes"].append(note_node)
+
+############ 
+# Save to Immich server
+class GImageSaveImmich(SaveImage):
+    def __init__(self):
+        super().__init__()
+        self.data_cached = None
+        self.data_cached_text = None
+    """
+    # DO NOT USE VALIDATE - it deactivates the node, but provides no user feedback as to why 
+    @classmethod
+    def VALIDATE_INPUTS(cls, **kwargs):
+        if not the_settings.get("immich_apikey"):
+            return "Immich api key is not set — please configure it in settings"
+
+        if not the_settings.get("immich_hostname"):
+            return "Immich server hostname is not set — please configure it in settings"
+
+        if not the_settings.get("immich_port"):
+            return "Immich server port is not set — please configure it in settings"
+
+        return True
+    """
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "image": ("IMAGE", {
+                    "tooltip": "Input image to save with metadata"
+                }),
+                "filename_prefix": ("STRING", {
+                    "default": "ComfyUI",
+                    "tooltip": "Prefix for the output filename (supports $variables for dynamic naming)"
+                }),
+                "album" : ("STRING", {
+                    "default": "",
+                    "tooltip": "optional album name, leave blank to use default value from settings"
+                }),
+                "tags" : ("STRING", {
+                    "default": "",
+                    "tooltip": "optional tags for images. Comma seperated. Merged with Tags from Settings."
+                }),
+                "save_also" : ("BOOLEAN", {
+                    "default": the_settings.get("immich_save_also",True),
+                    "tooltip": "Also save image to disk on the comfyui server"
+                }),
+            },
+            "optional": {
+                "notes": ("*", {
+                    "default": "",
+                    "tooltip": "Optional text for notes node that is embedded in saved image"
+                }),
+                "computed_prompt": ("*", {
+                    "default": "",
+                    "tooltip": "The computed prompt from Gprompts Node to embed in saved image (use this OR notes)"
+                })
+            },
+            "hidden": {
+                "prompt": "PROMPT",
+                "extra_pnginfo": "EXTRA_PNGINFO",
+            },
+        }
+
+    CATEGORY = "image"
+    RETURN_TYPES = ()
+    OUTPUT_NODE = True
+    FUNCTION = "execute"
+    
+    DESCRIPTION = (
+        "Saves an image to Immich server ( and optionaly to file system ).",
+        "with additional metadata embedded in the PNG info. "
+        "Can include computed prompts and notes that will be stored in the image file "
+        "creates a new Notes node and then saves with that in the workflow."
+    )
+
+    def execute(self, image=None, filename_prefix="ComfyUI", album=None,tags="",save_also=True, notes=None, computed_prompt=None, prompt = None,extra_pnginfo=None):
+        if not extra_pnginfo:
+            extra_pnginfo_new = {}
+        else:
+            extra_pnginfo_new = extra_pnginfo.copy()
+        note_text = None
+        if computed_prompt:
+            extra_pnginfo_new["computed_prompt"] = computed_prompt
+            note_text = f'Image created with prompt "{computed_prompt}"'
+        if notes and not computed_prompt:
+            note_text = notes
+        if not album:
+            album = the_settings.get('immich_default_album')
+        basetags = the_settings.get('immich_base_tags') or ""
+        tags = tags or ""
+        all_tags = (tags + ',' + basetags).split(',')
+        tags_list = list({tag.strip() for tag in all_tags if tag.strip()})
+
+        imm_fullpath = ""
+        if not "%" in filename_prefix:
+            filename_prefix = datetime.now().strftime("%Y-%m-%d") + os.path.sep + filename_prefix
+        imm_filename = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+        workflow = None
+
+        # try and find gprompts node (will not handle multiple instances reliably)
+        if note_text and prompt and "workflow" in extra_pnginfo_new:
+            workflow = extra_pnginfo_new["workflow"] 
+            nodes = workflow.get("nodes", [])
+            for node in nodes:
+                if node.get("type") == "GPrompts": 
+                    dprint(f"GPrompts node:{node}")
+        # Add note node to workflow
+        if note_text and prompt and "workflow" in extra_pnginfo_new:
+            workflow = extra_pnginfo_new["workflow"]
+            self.add_note_node_to_workflow(workflow, note_text)
+
+        # Save image (always use save_images() to create EXIF and workflow data)
+        saved = super().save_images(image, filename_prefix, prompt, extra_pnginfo_new)
+        #saved:{'ui': {'images': [{'filename': 'itest_00001_.png', 'subfolder': '2026-02-21', 'type': 'output'}]}}
+        rc = saved
+
+        filename_prefix += self.prefix_append
+        full_output_folder, filename, counter, subfolder, filename_prefix = folder_paths.get_save_image_path(
+                filename_prefix, self.output_dir, image.shape[1], image.shape[0])
+        dprint(f"full_output_folder:{full_output_folder}")
+        images = saved.get('ui',{}).get('images')
+        if images:
+            imm_filename = images[0].get('filename', '')
+        dprint(f"saved:{saved}")
+        dprint(f"imm_filename:{imm_filename}")
+        imm_fullpath = full_output_folder + os.sep + imm_filename
+        dprint(f"imm_fullpath:{imm_fullpath}")
+        # Validation, I am putting this after the image is saved to file system
+        server = the_settings.get("immich_hostname")
+        port = the_settings.get("immich_port")
+        api_key = the_settings.get('immich_apikey')
+        url = f"http://{server}:{port}"
+        missing = []
+        if not server:
+            missing.append("Hostname")
+        if not port:
+            missing.append("Port")
+        if not api_key:
+            missing.append("Api Key")
+        if missing:
+            print("\n🔴 IMMICH CONFIGURATION ERROR")
+            print(f"Save Image to Immich Server Node Missing: {', '.join(missing)}")
+            print("Please configure in Settings:Gadzoinks")
+            print(f"global settings:{the_settings}")
+            # Generate an error so the user gets alerted to what is wrong
+            error_msg = f": Missing {', '.join(missing)}. Open Settings, Gadzoinks to configure."
+            raise ValueError(error_msg)
+        try:
+            if imm_filename:
+                importer = ImmichImporter(url, api_key)
+                ext=['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp', '.heic', '.heif', '.avif']
+                rating = None
+                importer.upload_photo(imm_fullpath, album, tags_list, rating, workflow)
+        finally:
+            # Delete the file if we're not keeping it
+            if not save_also and imm_fullpath and os.path.exists(imm_fullpath):
+                rc = {} 
+                try:
+                    os.unlink(imm_fullpath)
+                    dprint(f"Deleted file (save_also=False): {imm_fullpath}")
+                except Exception as e:
+                    dprint(f"Error deleting file {imm_fullpath}: {e}")
+        return rc
 
     def add_note_node_to_workflow(self, workflow, note_text=None):
         """Helper to add a note node to workflow"""
@@ -302,8 +494,9 @@ class StringFormatter:
         
         return (result,)
            
-#
-#
+#####
+# GPrompts
+# Dynamic prompt text genereration
 #
 class GPrompts:
     def __init__(self):
@@ -415,7 +608,7 @@ class GPrompts:
                     "iteration": self.current_iteration
                 }
             }
-            dprint(f"nodeInfo:{nodeInfo} QAQ")
+            dprint(f"nodeInfo:{nodeInfo}")
             dynamic_data.add_ephemeral_node(
                 node_id=metadata_node_id,
                 node_info=nodeInfo,
@@ -600,7 +793,6 @@ class GPrompts:
         """
         Process random blocks in the text, handling wildcards correctly
         """
-        dprint = print
         dprint(f"process_random_blocks: {text}")
         
         def replace_random(match):
@@ -653,7 +845,6 @@ class GPrompts:
     # Replace the resolve_wildcard_references method with this:
     def resolve_wildcard_references(self, text):
         # Find wildcard references like __filename__ or directory__filename__ or nested__dir__file__
-        dprint = print
         dprint(f"resolve_wildcard_references text:{text}")       
         
         # Look for entire wildcard pattern with the surrounding __
@@ -688,7 +879,6 @@ class GPrompts:
         """Find wildcard file using ComfyUI's folder paths system"""
         try:
             # Use debug print function if available, otherwise use regular print
-            dprint = print
             
             dprint(f"find_wildcard_file looking for: {wildcard_path}{extension}")
             
@@ -769,18 +959,31 @@ class GPrompts:
         #dprint(f"@PromptServer.instance.routes.get(/gprompts/prompt)   last_processed_result:{last_processed_result} ")
         return web.json_response( { "prompt":"dummy value" } );
         #eturn web.json_response( { "prompt":last_processed_result } );
-
+######
+    @PromptServer.instance.routes.get("/gprompts/setting")
+    async def setting(request):
+        global the_settings
+        params = request.rel_url.query
+        for key, value in params.items():
+            the_settings[key] = value
+            dprint(f"setting [{key}]={value}")
+        dprint(f"setting the_settings {the_settings}")
+        return web.Response(text=f"Parameters received {params}")
+#######
 # Node registration
 NODE_CLASS_MAPPINGS = {
     "GPrompts": GPrompts,
+    "Save Image to Immich Server" : GImageSaveImmich,
     "Save Image With Notes": GImageSaveWithExtraMetadata,
     "String Formatter": StringFormatter
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "GPrompts": "Dynamic Prompts",
+    "Save Image to Immich Server" : "Save the to a Immich Server",
     "Save Image With Notes": "Save Image and add Note node to embedded workflow",
     "String Formatter": "String Formatter (sprintf)"
 }
 
 __all__ = ['NODE_CLASS_MAPPINGS', 'NODE_DISPLAY_NAME_MAPPINGS']
+
