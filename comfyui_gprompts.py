@@ -39,7 +39,7 @@ the_settings = {}
 print("LOADING GPROMPTS")
 
 def dprint(a):
-    print(a)
+    #print(a)
     pass
 
 ###

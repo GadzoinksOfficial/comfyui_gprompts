@@ -7,7 +7,7 @@ import { createElement as $el, getClosestOrSelf, setAttributes } from "./utils_d
 console.log("LOADED GPROMPTS");
 
 function dprint(...args) {
-   console.log(...args);
+   // console.log(...args);
 }
 
 
