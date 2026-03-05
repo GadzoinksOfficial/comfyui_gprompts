@@ -67,14 +67,44 @@ app.registerExtension({
             async onChange(value) { setbackendVariables({immich_apikey: value}); }
         },
     ],
-    async setup() {
-	dprint("Setting up Gadzoinks extension setup() foo");
-        try {
-	}
-	catch(exception) {
-            dprint("ComfyUI is outdated. New style menu based features are disabled.");
-        }
-   },
+	async setup() {
+		dprint("Setting up Gadzoinks extension setup() foo");
+		// Force-sync all settings to backend on load
+		setTimeout(async () => {
+			const settingMap = {
+			    "Gadzoinks.immich.base_tags":    "immich_base_tags",
+			    "Gadzoinks.immich.default_album": "immich_default_album",
+			    "Gadzoinks.immich_save_also":     "immich_save_also",
+			    "Gadzoinks.immich.port":          "immich_port",
+			    "Gadzoinks.immich.hostname":      "immich_hostname",
+			    "Gadzoinks.immich.apikey":        "immich_apikey",
+			};
+
+			const payload = {};
+			for (const [settingId, backendKey] of Object.entries(settingMap)) {
+			    payload[backendKey] = app.ui.settings.getSettingValue(settingId);
+			}
+			dprint("Syncing settings to backend:", payload);
+			await setbackendVariables(payload);
+		}, 500);
+		api.addEventListener("gadzoinks.request_settings", async () => {
+			dprint("Backend requested settings, sending...");
+			const settingMap = {
+			    "Gadzoinks.immich.base_tags":     "immich_base_tags",
+			    "Gadzoinks.immich.default_album":  "immich_default_album",
+			    "Gadzoinks.immich_save_also":      "immich_save_also",
+			    "Gadzoinks.immich.port":           "immich_port",
+			    "Gadzoinks.immich.hostname":       "immich_hostname",
+			    "Gadzoinks.immich.apikey":         "immich_apikey",
+			};
+			const payload = {};
+			for (const [settingId, backendKey] of Object.entries(settingMap)) {
+			    payload[backendKey] = app.ui.settings.getSettingValue(settingId);
+			}
+			dprint("Syncing settings to backend:", payload);
+			await setbackendVariables(payload);
+		});
+	},    
    async init(app) {
 	dprint("Setting up Gadzoinks init() foo");
    },

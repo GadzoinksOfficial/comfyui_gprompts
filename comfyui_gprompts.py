@@ -21,6 +21,9 @@ from datetime import datetime
 from server import PromptServer
 import aiohttp
 import platform
+import torch
+import traceback
+import numpy as np
 from aiohttp import web
 from nodes import PreviewImage, SaveImage
 from comfy_execution.graph import ExecutionBlocker
@@ -36,8 +39,290 @@ the_settings = {}
 print("LOADING GPROMPTS")
 
 def dprint(a):
-    #print(a)
+    print(a)
     pass
+
+###
+# Utility
+# Tensor to PIL
+
+def get_missing(settings):
+    missing = []
+    if not settings.get("immich_hostname"): missing.append("Hostname")
+    if not settings.get("immich_port"):     missing.append("Port")
+    if not settings.get("immich_apikey"):   missing.append("Api Key")
+    return missing
+
+async def request_settings_from_frontend():
+    await PromptServer.instance.send("gadzoinks.request_settings", {}, sid=None)
+
+def tensor2pil(image):
+    return Image.fromarray(np.clip(255. * image.cpu().numpy().squeeze(), 0, 255).astype(np.uint8))
+
+# PIL to Tensor
+def pil2tensor(image):
+    return torch.from_numpy(np.array(image).astype(np.float32) / 255.0).unsqueeze(0)
+
+# PIL Hex
+def pil2hex(image):
+    return hashlib.sha256(np.array(tensor2pil(image)).astype(np.uint16).tobytes()).hexdigest()
+
+# PIL to Mask
+def pil2mask(image):
+    image_np = np.array(image.convert("L")).astype(np.float32) / 255.0
+    mask = torch.from_numpy(image_np)
+    return 1.0 - mask
+
+
+def add_note_node_to_workflow( workflow, note_text=None):
+    """Helper to add a note node to workflow"""
+    nodes = workflow.get("nodes", [])
+
+    # Get next available node ID
+    max_id = 0
+    for node in nodes:
+        node_id = node.get("id", "0")
+        try:
+            node_id_int = int(node_id)
+            max_id = max(max_id, node_id_int)
+        except (ValueError, TypeError):
+            continue
+
+    note_node_id = str(max_id + 1)
+    # Create note node
+    note_node = {
+        "id": note_node_id,
+        "type": "Note",
+        "pos": [50, 50],  # Top-left corner
+        "size": {"0": 425, "1": 180},
+        "flags": {},
+        "order": len(nodes) + 1,
+        "mode": 0,
+        "inputs": [],
+        "outputs": [],
+        "properties": {"Node name for S&R": "Note"},
+        "widgets_values": [note_text]
+    }
+
+    workflow["nodes"].append(note_node)
+from PIL import Image
+from PIL.ExifTags import TAGS
+import json
+
+def extract_exif(image):
+    """Extract metadata from image including ComfyUI prompt data"""
+    metadata = {}
+    
+    # Try to get standard EXIF data (for JPEGs, etc.)
+    try:
+        if hasattr(image, '_getexif') and image._getexif():
+            exif = image._getexif()
+            for tag_id, value in exif.items():
+                tag = TAGS.get(tag_id, tag_id)
+                metadata[f"EXIF_{tag}"] = str(value)
+    except Exception as e:
+        metadata["EXIF_Error"] = f"Failed to read EXIF: {str(e)}"
+    
+    # Get PNG text chunks (where ComfyUI stores metadata)
+    if hasattr(image, 'info') and image.info:
+        png_info = image.info
+        
+        # Extract specific ComfyUI fields
+        comfy_fields = ['Prompt', 'Workflow', 'computed_prompt', 'prompt', 'workflow']
+        for field in comfy_fields:
+            if field in png_info:
+                metadata[field] = png_info[field]
+        
+        # Try to extract just the positive prompt from the Prompt JSON
+        if 'Prompt' in png_info:
+            try:
+                prompt_data = json.loads(png_info['Prompt'])
+                # Look for CLIPTextEncode nodes that might contain the prompt
+                for node_id, node_data in prompt_data.items():
+                    if node_data.get('class_type') == 'CLIPTextEncode':
+                        if 'title' in node_data.get('_meta', {}):
+                            if node_data['_meta']['title'] in ['pos', 'positive']:
+                                if 'inputs' in node_data and 'text' in node_data['inputs']:
+                                    metadata['Positive_Prompt'] = node_data['inputs']['text']
+            except:
+                pass
+        
+        # Also include any other PNG text chunks (for debugging)
+        other_fields = [k for k in png_info.keys() 
+                       if k not in ['Prompt', 'Workflow', 'Computed prompt', 'prompt', 'workflow']]
+        for field in other_fields:
+            if isinstance(png_info[field], str) and len(png_info[field]) < 1000:
+                metadata[f"{field}"] = png_info[field]
+    
+    # Format as readable string
+    if metadata:
+        metadata_str = "\n".join([f"{k}: {v[:200]}..." if len(str(v)) > 200 else f"{k}: {v}" 
+                                  for k, v in metadata.items()])
+    else:
+        metadata_str = "No metadata found"
+    
+    return metadata, metadata_str
+
+def OLDextract_exif( image):
+    """Extract EXIF data from image and return date and  formatted string"""
+    exif_data = {}
+    exif_str = ""
+    try:
+        if hasattr(image, '_getexif') and image._getexif():
+            exif = image._getexif()
+            for tag_id, value in exif.items():
+                tag = TAGS.get(tag_id, tag_id)
+                exif_data[tag] = str(value)
+    except Exception as e:
+        exif_data["Error"] = f"Failed to read EXIF: {str(e)}"
+    
+    # Format as readable string
+    if exif_data:
+        exif_str =  "\n".join([f"{k}: {v}" for k, v in exif_data.items()])
+    return exif_data,exif_str
+########
+## Load Image Batch
+## forked from was-ns custom node
+import os
+import glob
+import random
+from PIL import Image, ImageOps
+from PIL.ExifTags import TAGS
+
+class LoadImagesBatch:
+    def __init__(self):
+        pass
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "mode": (["single_image", "incremental_image", "random"],),
+                "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
+                "index": ("INT", {"default": 0, "min": 0, "max": 150000, "step": 1}),
+                "path": ("STRING", {"default": '', "multiline": False}),
+                "pattern": ("STRING", {"default": '*', "multiline": False}),
+                "allow_RGBA_output": (["false", "true"],),
+            },
+            "optional": {
+                "filename_text_extension": (["true", "false"],),
+                "load_exif": (["true", "false"],),  # New option to enable/disable EXIF loading
+            }
+        }
+
+    RETURN_TYPES = ("IMAGE", "STRING", "INT", "INT", "STRING")
+    RETURN_NAMES = ("image", "filename_text", "width", "height", "prompt")
+    FUNCTION = "load_batch_images"
+
+    CATEGORY = "Image/Loaders"
+
+
+    def load_batch_images(self, path, pattern='*', index=0, mode="single_image", 
+                         seed=0, allow_RGBA_output='false', 
+                         filename_text_extension='true', load_exif='true'):
+        
+        allow_RGBA = (allow_RGBA_output == 'true')
+        load_exif_data = (load_exif == 'true')
+
+        if not os.path.exists(path):
+            raise ValueError(f"Path does not exist: {path}")
+            
+        # Load all image paths
+        image_paths = []
+        for file_name in glob.glob(os.path.join(path, pattern), recursive=True):
+            if file_name.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.tiff', '.webp')):
+                image_paths.append(os.path.abspath(file_name))
+        
+        image_paths.sort()
+        
+        if not image_paths:
+            raise ValueError(f"No images found in {path} with pattern {pattern}")
+
+        # Select image based on mode
+        if mode == 'single_image':
+            selected_index = index % len(image_paths)  # Wrap around if index too high
+            image_path = image_paths[selected_index]
+        elif mode == 'incremental_image':
+            # For incremental, we'll just cycle through based on a simple counter
+            # You can modify this to store state if needed
+            if not hasattr(self, '_incremental_counter'):
+                self._incremental_counter = {}
+            
+            counter_key = f"{path}_{pattern}"
+            if counter_key not in self._incremental_counter:
+                self._incremental_counter[counter_key] = 0
+            
+            selected_index = self._incremental_counter[counter_key]
+            self._incremental_counter[counter_key] = (selected_index + 1) % len(image_paths)
+            image_path = image_paths[selected_index]
+        else:  # random mode
+            random.seed(seed)
+            selected_index = int(random.random() * len(image_paths))
+            image_path = image_paths[selected_index]
+
+        # Load the image
+        try:
+            image = Image.open(image_path)
+            image = ImageOps.exif_transpose(image)  # Apply orientation from EXIF
+            
+            # Get dimensions
+            width, height = image.size
+            
+            # Extract EXIF data if requested
+            exif_data = {}
+            exif_string = None
+            if load_exif_data:
+                exif_data, exif_string = extract_exif(image)
+                dprint(f"Loaded exif:\n{exif_data}")
+
+            exif_prompt = exif_data.get("computed_prompt","")
+            #TODO backtrace to find pos prompt
+
+            
+            # Convert RGBA if needed
+            if not allow_RGBA and image.mode == 'RGBA':
+                image = image.convert('RGB')
+            elif image.mode != 'RGB' and image.mode != 'RGBA':
+                image = image.convert('RGB')
+            
+            # Get filename
+            filename = os.path.basename(image_path)
+            if filename_text_extension == "false":
+                filename = os.path.splitext(filename)[0]
+            
+            image_tensor = pil2tensor(image)
+            
+            return (image_tensor, filename, width, height, exif_prompt)
+            
+        except Exception as e:
+            traceback.print_exc()
+            raise ValueError(f"Error loading image {image_path}: {str(e)}")
+
+    @classmethod
+    def IS_CHANGED(cls, **kwargs):
+        # Force re-execution for incremental and random modes
+        if kwargs.get('mode') != 'single_image':
+            return float("NaN")
+        
+        # For single_image, check if file has changed
+        if 'path' in kwargs and 'pattern' in kwargs:
+            path = kwargs['path']
+            pattern = kwargs.get('pattern', '*')
+            index = kwargs.get('index', 0)
+            
+            # Get the specific image file
+            image_paths = []
+            for file_name in glob.glob(os.path.join(path, pattern), recursive=True):
+                if file_name.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.tiff', '.webp')):
+                    image_paths.append(os.path.abspath(file_name))
+            
+            if image_paths and index < len(image_paths):
+                # Return file hash to detect changes
+                import hashlib
+                with open(image_paths[index], 'rb') as f:
+                    return hashlib.sha256(f.read()).hexdigest()
+        
+        return float("NaN")
 
 #######
 ### Save with Notes
@@ -104,43 +389,12 @@ class GImageSaveWithExtraMetadata(SaveImage):
         # Add note node to workflow
         if note_text and prompt and "workflow" in extra_pnginfo_new:
             workflow = extra_pnginfo_new["workflow"]
-            self.add_note_node_to_workflow(workflow, note_text)
+            add_note_node_to_workflow(workflow, note_text)
 
         # Save image
         saved = super().save_images(image, filename_prefix, prompt, extra_pnginfo_new)
         return saved
 
-    def add_note_node_to_workflow(self, workflow, note_text=None):
-        """Helper to add a note node to workflow"""
-        nodes = workflow.get("nodes", [])
-
-        # Get next available node ID
-        max_id = 0
-        for node in nodes:
-            node_id = node.get("id", "0")
-            try:
-                node_id_int = int(node_id)
-                max_id = max(max_id, node_id_int)
-            except (ValueError, TypeError):
-                continue
-
-        note_node_id = str(max_id + 1)
-        # Create note node
-        note_node = {
-            "id": note_node_id,
-            "type": "Note",
-            "pos": [50, 50],  # Top-left corner
-            "size": {"0": 425, "1": 180},
-            "flags": {},
-            "order": len(nodes) + 1,
-            "mode": 0,
-            "inputs": [],
-            "outputs": [],
-            "properties": {"Node name for S&R": "Note"},
-            "widgets_values": [note_text]
-        }
-
-        workflow["nodes"].append(note_node)
 
 ############ 
 # Save to Immich server
@@ -241,18 +495,27 @@ class GImageSaveImmich(SaveImage):
         workflow = None
 
         # try and find gprompts node (will not handle multiple instances reliably)
+        computed_prompt = None
         if note_text and prompt and "workflow" in extra_pnginfo_new:
             workflow = extra_pnginfo_new["workflow"] 
             nodes = workflow.get("nodes", [])
             for node in nodes:
                 if node.get("type") == "GPrompts": 
                     dprint(f"GPrompts node:{node}")
+                    computed_prompt = node.get("properties",{}).get("_meta",{}).get("computed_result")
+        # add computed_prompt as top level in embedded in json
+        if computed_prompt:
+            extra_pnginfo_new['computed_prompt'] = computed_prompt
         # Add note node to workflow
         if note_text and prompt and "workflow" in extra_pnginfo_new:
             workflow = extra_pnginfo_new["workflow"]
-            self.add_note_node_to_workflow(workflow, note_text)
+            add_note_node_to_workflow(workflow, note_text)
 
         # Save image (always use save_images() to create EXIF and workflow data)
+
+        
+        dprint(f"extra_pnginfo_new:\n:{extra_pnginfo_new}")
+
         saved = super().save_images(image, filename_prefix, prompt, extra_pnginfo_new)
         #saved:{'ui': {'images': [{'filename': 'itest_00001_.png', 'subfolder': '2026-02-21', 'type': 'output'}]}}
         rc = saved
@@ -273,13 +536,17 @@ class GImageSaveImmich(SaveImage):
         port = the_settings.get("immich_port")
         api_key = the_settings.get('immich_apikey')
         url = f"http://{server}:{port}"
-        missing = []
-        if not server:
-            missing.append("Hostname")
-        if not port:
-            missing.append("Port")
-        if not api_key:
-            missing.append("Api Key")
+        missing = get_missing(the_settings)
+        if missing:
+            print(f"\n🟡 IMMICH settings missing ({', '.join(missing)}), requesting from frontend...")
+            # this call, forces javascript to resend settings to this code async via "/gprompts/setting". which is why we sleep after
+            PromptServer.instance.send_sync("gadzoinks.request_settings", {})
+            time.sleep(0.3)
+            server  = the_settings.get("immich_hostname")
+            port    = the_settings.get("immich_port")
+            api_key = the_settings.get('immich_apikey')
+            url     = f"http://{server}:{port}"
+            missing = get_missing(the_settings)
         if missing:
             print("\n🔴 IMMICH CONFIGURATION ERROR")
             print(f"Save Image to Immich Server Node Missing: {', '.join(missing)}")
@@ -304,38 +571,6 @@ class GImageSaveImmich(SaveImage):
                 except Exception as e:
                     dprint(f"Error deleting file {imm_fullpath}: {e}")
         return rc
-
-    def add_note_node_to_workflow(self, workflow, note_text=None):
-        """Helper to add a note node to workflow"""
-        nodes = workflow.get("nodes", [])
-        
-        # Get next available node ID
-        max_id = 0
-        for node in nodes:
-            node_id = node.get("id", "0")
-            try:
-                node_id_int = int(node_id)
-                max_id = max(max_id, node_id_int)
-            except (ValueError, TypeError):
-                continue
-        
-        note_node_id = str(max_id + 1)
-        # Create note node
-        note_node = {
-            "id": note_node_id,
-            "type": "Note",
-            "pos": [50, 50],  # Top-left corner
-            "size": {"0": 425, "1": 180},
-            "flags": {},
-            "order": len(nodes) + 1,
-            "mode": 0,
-            "inputs": [],
-            "outputs": [],
-            "properties": {"Node name for S&R": "Note"},
-            "widgets_values": [note_text]
-        }
-        
-        workflow["nodes"].append(note_node)
 
 # ============================================================================
 # StringFormatter Node - Acts like sprintf
@@ -975,14 +1210,16 @@ NODE_CLASS_MAPPINGS = {
     "GPrompts": GPrompts,
     "Save Image to Immich Server" : GImageSaveImmich,
     "Save Image With Notes": GImageSaveWithExtraMetadata,
-    "String Formatter": StringFormatter
+    "String Formatter": StringFormatter,
+    "Batch Image Loader":LoadImagesBatch
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "GPrompts": "Dynamic Prompts",
     "Save Image to Immich Server" : "Save the to a Immich Server",
     "Save Image With Notes": "Save Image and add Note node to embedded workflow",
-    "String Formatter": "String Formatter (sprintf)"
+    "String Formatter": "String Formatter (sprintf)",
+    "Batch Image Loader" : "Load images from folder"
 }
 
 __all__ = ['NODE_CLASS_MAPPINGS', 'NODE_DISPLAY_NAME_MAPPINGS']
