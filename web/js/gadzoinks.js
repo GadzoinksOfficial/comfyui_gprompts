@@ -87,6 +87,28 @@ app.registerExtension({
 			dprint("Syncing settings to backend:", payload);
 			await setbackendVariables(payload);
 		}, 500);
+		api.addEventListener("gprompts_executed", ({detail}) => {
+		 	const {node_id, result} = detail;
+			dprint("gprompts_executed result",result);
+			dprint("gprompts_executed node_id",node_id);
+			if (!node_id || !result) { dprint("gprompts_executed node_id return B1"); return; }
+			dprint("gprompts_executed node_id A1");
+			const node = app.graph.getNodeById(node_id);
+			if (!node) { dprint("no node"); return;}
+			if (!node.properties._meta) { node.properties._meta={}; }
+			dprint("gprompts_executed node_id A2 node",node);
+			node.properties._meta.computed_result = result;
+			node.properties._meta.computed_prompt = result;
+			for (const widget of node.widgets || []) {
+				if (widget.name === "computed_prompt") {
+			    		widget.value = result;
+			    		dprint("Updated widget value");
+			    		break;
+				}
+		    	}
+			app.graph.setDirtyCanvas(true);
+			dprint(node.properties._meta);
+		 });
 		api.addEventListener("gadzoinks.request_settings", async () => {
 			dprint("Backend requested settings, sending...");
 			const settingMap = {

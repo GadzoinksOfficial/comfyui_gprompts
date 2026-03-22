@@ -4,6 +4,7 @@ From Gadzoinks Official
 https://github.com/GadzoinksOfficial/comfyui_gprompts
 
 """
+import time
 import os
 import re
 import json
@@ -11,6 +12,7 @@ import random
 import socket
 import uuid
 import sys
+import time
 from pathlib import Path
 from collections import defaultdict
 import folder_paths
@@ -879,7 +881,7 @@ class GPrompts:
 
     def prepare_sequential_combinations(self, text):
         # Find all sequential blocks
-        sequential_blocks = re.finditer(r'\{\{(.*?)\}\}', text)
+        sequential_blocks = re.finditer(r'\{\{(.*?)\}\}', text,flags=re.DOTALL)
         block_options = []
         
         # Extract options from each sequential block
@@ -904,7 +906,7 @@ class GPrompts:
                 temp_text = text
                 for i, replacement in enumerate(combo):
                     pattern = r'\{\{.*?\}\}'  # Find the first sequential block
-                    temp_text = re.sub(pattern, replacement, temp_text, count=1)
+                    temp_text = re.sub(pattern, replacement, temp_text, count=1,flags=re.DOTALL)
                 result_prompts.append(temp_text)
             
             # Store all combinations for future iterations
@@ -1068,9 +1070,9 @@ class GPrompts:
         while '{' in text:
             # Use the appropriate regex pattern
             if has_sequential:
-                new_text = re.sub(r'(?<!\{)\{([^\{].*?)\}', replace_random, text)
+                new_text = re.sub(r'(?<!\{)\{([^\{].*?)\}', replace_random, text,flags=re.DOTALL)
             else:
-                new_text = re.sub(r'\{([^\{].*?)\}', replace_random, text)
+                new_text = re.sub(r'\{([^\{].*?)\}', replace_random, text,flags=re.DOTALL)
             if new_text == text:  # No more replacements made
                 break
             text = new_text
