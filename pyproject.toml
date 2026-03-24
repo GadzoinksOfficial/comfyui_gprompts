@@ -1,7 +1,7 @@
 [project]
 name = "gprompts"
-description = "Another dynamic prompts node, designed to be easy to use and support wildcards"
-version = "2.1.2"
+description = "Node Pack. Includes GPrompts - Another dynamic prompts node, designed to be easy to use and support wildcards; String Formatter; Save image with notes; and save image to Immich Server"
+version = "2.1.4"
 license = {text = "MIT"}
 
 [project.urls]
@@ -12,3 +12,4 @@ Repository = "https://github.com/GadzoinksOfficial/comfyui_gprompts"
 PublisherId = "gadzoinksofficial"
 DisplayName = "comfyui_gprompts"
 Icon = ""
+
