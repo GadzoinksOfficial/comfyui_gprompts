@@ -18,7 +18,7 @@ import time
 import json
 
 def dprint(s):
-    print(s)
+    #print(s)
     pass
 
 class ImmichImporter:
