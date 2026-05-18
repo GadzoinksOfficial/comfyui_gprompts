@@ -31,6 +31,9 @@ from nodes import PreviewImage, SaveImage
 from comfy_execution.graph import ExecutionBlocker
 import folder_paths
 import os
+from PIL import Image
+from PIL.ExifTags import TAGS
+import json
 from .immich_importer import ImmichImporter
 
 
@@ -49,7 +52,7 @@ filename_counter = 0
 print("LOADING GPROMPTS")
 
 def dprint(a):
-    print(a)
+    #print(a)
     pass
 
 ###
@@ -78,7 +81,6 @@ def process_deletion_queue():
             pass
     os.remove(delete_queue_file)
 
-# Tensor to PIL
 
 def get_missing(settings):
     missing = []
@@ -90,6 +92,7 @@ def get_missing(settings):
 async def request_settings_from_frontend():
     await PromptServer.instance.send("gadzoinks.request_settings", {}, sid=None)
 
+# Tensor to PIL
 def tensor2pil(image):
     return Image.fromarray(np.clip(255. * image.cpu().numpy().squeeze(), 0, 255).astype(np.uint8))
 
@@ -166,9 +169,6 @@ def add_note_node_to_workflow( workflow, note_text=None):
     }
 
     workflow["nodes"].append(note_node)
-from PIL import Image
-from PIL.ExifTags import TAGS
-import json
 
 def extract_exif(image):
     """Extract metadata from image including ComfyUI prompt data"""
