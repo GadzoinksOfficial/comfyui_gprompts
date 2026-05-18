@@ -18,7 +18,7 @@ import time
 import json
 
 def dprint(s):
-    #print(s)
+    print(s)
     pass
 
 class ImmichImporter:
@@ -32,17 +32,17 @@ class ImmichImporter:
         
         if api_key:
             self.session.headers.update({'x-api-key': api_key})
-            dprint(f"✓ Using API key for authentication")
+            dprint(f"Using API key for authentication")
     
     def test_connection(self):
         """Test connection to the server"""
         try:
             response = self.session.get(f"{self.api_base}/server/ping")
             if response.status_code == 200:
-                dprint(f"✓ Connected to server at {self.server_url}")
+                dprint(f"Connected to server at {self.server_url}")
                 return True
         except requests.exceptions.RequestException as e:
-            dprint(f"✗ Failed to connect to server: {e}")
+            dprint(f"Failed to connect to server: {e}")
             return False
     
     def login(self, email, password):
@@ -59,11 +59,11 @@ class ImmichImporter:
             data = response.json()
             self.api_key = data.get('accessToken')
             self.session.headers.update({'x-api-key': self.api_key})
-            dprint("✓ Successfully logged in")
+            dprint("Successfully logged in")
             dprint(f"  User: {data.get('userEmail')} ({data.get('name')})")
             return True
         except requests.exceptions.RequestException as e:
-            dprint(f"✗ Login failed: {e}")
+            dprint(f"Login failed: {e}")
             if hasattr(e, 'response') and e.response:
                 dprint(f"  Response: {e.response.text}")
             return False
@@ -76,7 +76,7 @@ class ImmichImporter:
             response.raise_for_status()
             return response.json()
         except requests.exceptions.RequestException as e:
-            dprint(f"✗ Failed to fetch albums: {e}")
+            dprint(f"Failed to fetch albums: {e}")
             if hasattr(e, 'response') and e.response:
                 print(f"  Response: {e.response.text}")
             return []
@@ -93,10 +93,10 @@ class ImmichImporter:
             response = self.session.post(url, json=payload)
             response.raise_for_status()
             album = response.json()
-            dprint(f"✓ Created album: {album_name} (ID: {album.get('id')})")
+            dprint(f"Created album: {album_name} (ID: {album.get('id')})")
             return album
         except requests.exceptions.RequestException as e:
-            dprint(f"✗ Failed to create album: {e}")
+            dprint(f"Failed to create album: {e}")
             if hasattr(e, 'response') and e.response:
                 print(f"  Response: {e.response.text}")
             return None
@@ -130,6 +130,37 @@ class ImmichImporter:
         except requests.exceptions.RequestException as e:
             dprint(f"✗ Bulk upload check failed: {e}")
             return None
+    def gz_ingest(self,asset_id,album_id,info):
+        dprint(f"gz_ingest {asset_id} {album_id}\n{info}\n")
+        url = f"{self.server_url}/gz/ingest"
+        headers = {'Content-Type': 'application/json'}
+        if True:
+            try:
+                dprint(f"calling gz ingest to {url}...")
+                data = {
+                'asset_id': asset_id,
+                'album_id': album_id,
+                'info' : info
+                }
+
+                response = self.session.post(url, json=data, headers=headers)
+
+                # Handle different response codes
+                if response.status_code == 200:
+                    result = response.json()
+                    dprint(f"Duplicate (status: {result.get('status')})")
+                    return {'duplicate': True, 'id': result.get('id')}
+                elif response.status_code == 201:
+                    result = response.json()
+                    dprint(f"result:{result}")
+                    #status = result.get("status")
+            except requests.exceptions.RequestException as e:
+                dprint(f"Failed: {e}")
+                if hasattr(e, 'response') and e.response:
+                    dprint(f"    Status: {e.response.status_code}")
+                    dprint(f"    Response: {e.response.text}")
+                return None
+        return {}
 
     def upload_photo_and_sidecar(self, file_path, sidecar_path, album_name=None):
         url = f"{self.api_base}/assets"
@@ -143,8 +174,8 @@ class ImmichImporter:
             for album in albums:
                 if album['albumName'].lower() == album_name.lower():
                     album_id = album['id']
-                    dprint(f"✓ Found existing album: {album_name} (ID: {album_id})")
-                    dprint(f"  Assets: {album.get('assetCount', 0)}")
+                    dprint(f"Found existing album: {album_name} (ID: {album_id})")
+                    dprint(f"Assets: {album.get('assetCount', 0)}")
                     break
 
             if not album_id:
@@ -232,7 +263,10 @@ class ImmichImporter:
                             json={"assetIds": [asset_id], "name": "refresh-metadata"},
                             )
                     """
-                    return {'success': True, 'id': result.get('id')}
+                    rc = {'success': True, 'id': result.get('id')}
+                    if album_id:
+                        rc['album_id'] = album_id
+                    return rc
                 else:
                     dprint(f"Unexpected status code: {response.status_code}")
                     dprint(f"Response: {response.text}")
@@ -245,16 +279,19 @@ class ImmichImporter:
                     dprint(f"    Response: {e.response.text}")
                 return None
 
-    def upload_photo(self, file_path, album_name=None, tags=None, rating=None, comfy_workflow=None):
+    def upload_photo(self, file_path, album_name=None, tags=None,structured_tags=None,rating=None, comfy_workflow=None):
         """Upload a single photo to Immich - matches /assets POST endpoint
 
         Args:
             file_path (str): Path to the image file
             album_name (str, optional): Name of album to add photo to
             tags (list, optional): List of tags to add to the photo
+            structured_tags : List of tags "alpha|beta|gamma" format
             rating (int, optional): Rating from 0-5 (0 means no rating)
             comfy_workflow (dict, optional): ComfyUI workflow data
         """
+        upload_rc = None
+        temp_sidecar = None
         filename = os.path.basename(file_path)
         dprint(f"filename:{filename}")
         # Validate rating if provided
@@ -271,7 +308,9 @@ class ImmichImporter:
 
 
         # Create sidecar data if tags, rating, workflow are provided
-        if tags or (rating and rating > 0) or comfy_workflow :
+        if not comfy_workflow:
+            dprint(f"no comfy_workflow")
+        if True:
             if True:
                 # Create new XMP with standard Dublin Core tags, rating, and our custom data
                 xmp_template = f'''<?xpacket begin="" id="W5M0MpCehiHzreSzNTczkc9d"?>
@@ -296,6 +335,11 @@ class ImmichImporter:
                     for tag in tags:
                         xmp_template += f'\n  <rdf:li>{tag}</rdf:li>'
                     xmp_template += f'\n </rdf:Bag>\n</dc:subject>'
+                if structured_tags:
+                    xmp_template += f'\n<lr:hierarchicalSubject>\n <rdf:Bag>'
+                    for tag in structured_tags:
+                        xmp_template += f'\n  <rdf:li>{tag}</rdf:li>'
+                    xmp_template += f'\n </rdf:Bag>\n</lr:hierarchicalSubject>'
 
                 # Add standard XMP rating if provided
                 if rating and rating > 0:
@@ -345,16 +389,18 @@ class ImmichImporter:
                     dprint(f"    {line}")
                 dprint(f"    {'='*50}")
         try:
-            self.upload_photo_and_sidecar(file_path, os.fspath(temp_sidecar)  , album_name=album_name)
+            upload_rc = self.upload_photo_and_sidecar(file_path, os.fspath(temp_sidecar)  , album_name=album_name)
         except Exception as e:
             print(f"exception:{e}")
+
         finally:
             # Clean up temporary sidecar file if we created one
-            if temp_sidecar.exists():
+            if temp_sidecar and temp_sidecar.exists():
                 try:
                     temp_sidecar.unlink()
                 except:
                     pass
+        return upload_rc
 
     def add_assets_to_album(self, album_id, asset_ids):
         """Add assets to album - matches /albums/{id}/assets PUT endpoint"""
@@ -461,10 +507,10 @@ class ImmichImporter:
         dprint(f"\n{'='*60}")
         dprint(f"IMPORT COMPLETE")
         dprint(f"{'='*60}")
-        dprint(f"  ✓ Successfully uploaded: {successful}")
-        dprint(f"  ⏭️  Skipped (duplicates): {skipped}")
-        dprint(f"  ✗ Failed: {failed}")
-        dprint(f"  📊 Total processed: {len(files)}")
+        dprint(f" Successfully uploaded: {successful}")
+        dprint(f" Skipped (duplicates): {skipped}")
+        dprint(f" Failed: {failed}")
+        dprint(f" Total processed: {len(files)}")
         
         # Add assets to album if we have an album ID and uploaded assets
         if album_id and uploaded_asset_ids:
@@ -472,7 +518,7 @@ class ImmichImporter:
             self.add_assets_to_album(album_id, uploaded_asset_ids)
         
         if album_name:
-            dprint(f"  📁 Album: {album_name}")
+            dprint(f"Album: {album_name}")
 
 def list_albums(importer):
     """List all available albums using the /albums endpoint"""
@@ -508,18 +554,18 @@ def list_albums(importer):
                 pass
         
         print(f"\n{i}. 📁 {album_name}")
-        print(f"   ID: {album_id}")
-        print(f"   📸 Photos: {asset_count}")
-        print(f"   📅 Created: {created_at}")
+        print(f" ID: {album_id}")
+        print(f" Photos: {asset_count}")
+        print(f" Created: {created_at}")
         if description:
-            print(f"   📝 Description: {description}")
+            print(f" Description: {description}")
         if is_shared:
-            print(f"   🔗 Shared: Yes")
+            print(f" Shared: Yes")
         
         # Show owner if available
         owner = album.get('owner')
         if owner:
-            print(f"   👤 Owner: {owner.get('name', 'Unknown')}")
+            print(f" Owner: {owner.get('name', 'Unknown')}")
     
     print(f"\n{'='*60}")
 

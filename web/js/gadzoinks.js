@@ -15,6 +15,30 @@ app.registerExtension({
     name: "Comfy.GPrompts.settings",
     settings: [
         {
+            id: "Gadzoinks.immich.include.hostname",
+            name: "Include hostname in metadata",
+	    defaultValue: "On",
+            type: "boolean",
+            options: [
+                { value: true, text: "On" },
+                { value: false, text: "Off" },
+            ],
+            category: ["Gadzoinks", "Account", "IncludeHostname"],
+            async onChange(value) { setbackendVariables({immich_includehostname: value}); }
+        },
+        {
+            id: "Gadzoinks.immich_save_also",
+            name: "Save Image to Disk",
+            defaultValue: "",
+            type: "boolean",
+            options: [
+                { value: true, text: "On" },
+                { value: false, text: "Off" },
+            ],
+            category: ["Gadzoinks", "Account", "Save_also"],
+            async onChange(value) { setbackendVariables({immich_save_also: value}); }
+        },
+	{
             id: "Gadzoinks.immich.base_tags",
             name: "Default Tags (optional)",
             type: "text",
@@ -29,18 +53,6 @@ app.registerExtension({
             defaultValue: "",
             category: ["Gadzoinks", "Account", "Album"],
             async onChange(value) { setbackendVariables({immich_default_album: value}); }
-        },
-        {
-            id: "Gadzoinks.immich_save_also",
-            name: "Save Image to Disk",
-            defaultValue: "",
-            type: "boolean",
-            options: [
-                { value: true, text: "On" },
-                { value: false, text: "Off" },
-            ],
-            category: ["Gadzoinks", "Account", "Save_also"],
-            async onChange(value) { setbackendVariables({immich_save_also: value}); }
         },
         {
             id: "Gadzoinks.immich.port",
@@ -78,6 +90,7 @@ app.registerExtension({
 			    "Gadzoinks.immich.port":          "immich_port",
 			    "Gadzoinks.immich.hostname":      "immich_hostname",
 			    "Gadzoinks.immich.apikey":        "immich_apikey",
+			    "Gadzoinks.immich.include.hostname": "immich_includehostname",
 			};
 
 			const payload = {};
@@ -118,6 +131,7 @@ app.registerExtension({
 			    "Gadzoinks.immich.port":           "immich_port",
 			    "Gadzoinks.immich.hostname":       "immich_hostname",
 			    "Gadzoinks.immich.apikey":         "immich_apikey",
+			    "Gadzoinks.immich.include.hostname": "immich_includehostname",
 			};
 			const payload = {};
 			for (const [settingId, backendKey] of Object.entries(settingMap)) {

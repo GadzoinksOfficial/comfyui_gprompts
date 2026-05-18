@@ -29,23 +29,55 @@ import numpy as np
 from aiohttp import web
 from nodes import PreviewImage, SaveImage
 from comfy_execution.graph import ExecutionBlocker
+import folder_paths
+import os
 from .immich_importer import ImmichImporter
 
 
 # Web directory for documentation files
 WEB_DIRECTORY = "./web/js"
 
+temp_dir = folder_paths.get_temp_directory()
+delete_queue_file = os.path.join(temp_dir, "gz_delete_queue.txt")
+
 last_processed_result = ""
+last_processed_result_workflow_id = 0
+promtpForId = {}
 the_settings = {}
+filename_counter = 0
 
 print("LOADING GPROMPTS")
 
 def dprint(a):
-    #print(a)
+    print(a)
     pass
 
 ###
 # Utility
+
+def add_to_delete_queue(filepath):
+    """Queue a file for deletion"""
+    global delete_queue_file
+    if isinstance(filepath, Path):
+        filepath = str(filepath)
+    with open(delete_queue_file, 'w') as f:
+        f.write(filepath)
+
+def process_deletion_queue():
+    """Call this at plugin start to delete queued files"""
+    global delete_queue_file
+    dprint(f"delete_queue_file:{delete_queue_file}")
+    if not os.path.exists(delete_queue_file):
+        return
+    with open(delete_queue_file, 'r') as f:
+        filepath = f.read().strip()
+    if filepath and os.path.exists(filepath):
+        try:
+            os.remove(filepath)
+        except:
+            pass
+    os.remove(delete_queue_file)
+
 # Tensor to PIL
 
 def get_missing(settings):
@@ -75,6 +107,33 @@ def pil2mask(image):
     mask = torch.from_numpy(image_np)
     return 1.0 - mask
 
+def extract_computed_prompt(data):
+    """
+    Traverse a nested dictionary to find class_type == 'GPrompts'
+    and extract _meta['computed_prompt']
+    """
+    # If data is a dictionary, check its values
+    if isinstance(data, dict):
+        # Check if current node has class_type == 'GPrompts'
+        if data.get('class_type') == 'GPrompts':
+            # Extract computed_prompt from _meta
+            if '_meta' in data and 'computed_prompt' in data['_meta']:
+                return data['_meta']['computed_prompt']
+        
+        # Recursively traverse all values in the dictionary
+        for key, value in data.items():
+            result = extract_computed_prompt(value)
+            if result is not None:
+                return result
+    
+    # If data is a list, traverse each item
+    elif isinstance(data, list):
+        for item in data:
+            result = extract_computed_prompt(item)
+            if result is not None:
+                return result
+    
+    return None
 
 def add_note_node_to_workflow( workflow, note_text=None):
     """Helper to add a note node to workflow"""
@@ -455,6 +514,7 @@ class GImageSaveImmich(SaveImage):
                 })
             },
             "hidden": {
+                "unique_id": "UNIQUE_ID",
                 "prompt": "PROMPT",
                 "extra_pnginfo": "EXTRA_PNGINFO",
             },
@@ -472,52 +532,61 @@ class GImageSaveImmich(SaveImage):
         "creates a new Notes node and then saves with that in the workflow."
     )
 
-    def execute(self, image=None, filename_prefix="ComfyUI", album=None,tags="",save_also=True, notes=None, computed_prompt=None, prompt = None,extra_pnginfo=None):
+    def execute(self, image=None, filename_prefix="ComfyUI", album=None,tags="",save_also=True, notes=None, computed_prompt=None,unique_id=0, prompt = None,extra_pnginfo=None):
+        global last_processed_result,last_processed_result_workflow_id,promtpForId,filename_counter
+        filename_counter = filename_counter+1
+        workflow_id = extra_pnginfo.get("workflow",{}).get("id")
+        last_prompt = promtpForId.get(workflow_id)
+        process_deletion_queue()
+        #dprint(f"workflow_id {workflow_id}   last_prompt:{last_prompt}")
+        #dprint(f"entry extra_pnginfo:\n{extra_pnginfo}")
+        #dprint(f"prompt:\n{prompt}")
         if not extra_pnginfo:
             extra_pnginfo_new = {}
         else:
             extra_pnginfo_new = extra_pnginfo.copy()
         note_text = None
-        if computed_prompt:
-            extra_pnginfo_new["computed_prompt"] = computed_prompt
-            note_text = f'Image created with prompt "{computed_prompt}"'
-        if notes and not computed_prompt:
+        # Try in order notes,computed_prompt, global value of gprompt node
+        if notes:
             note_text = notes
+        if not note_text and computed_prompt:
+            note_text = f'Image created with prompt "{computed_prompt}"'
+        if not note_text and last_prompt:
+            note_text = f'Image created with prompt "{last_prompt}"'
+        if "computed_prompt" not in extra_pnginfo_new:
+            if computed_prompt:
+                extra_pnginfo_new["computed_prompt"] = computed_prompt
+            else:
+                extra_pnginfo_new["computed_prompt"] = last_prompt
         if not album:
             album = the_settings.get('immich_default_album')
         basetags = the_settings.get('immich_base_tags') or ""
         tags = tags or ""
         all_tags = (tags + ',' + basetags).split(',')
-        tags_list = list({tag.strip() for tag in all_tags if tag.strip()})
-
+        user_tags = list({tag.strip() for tag in all_tags if tag.strip()})
+        
+        # still testing this. maybe extract model and loras for tag values
+        # gen_tags = [ "gz|software|comfyui","gz|basemodel|flux2", "gz|lora|realism", "gz|lora|scifi" ]
+        gen_tags = [ "gz|software|comfyui" ]
+        structured_tags = user_tags + gen_tags
         imm_fullpath = ""
         if not "%" in filename_prefix:
             filename_prefix = datetime.now().strftime("%Y-%m-%d") + os.path.sep + filename_prefix
         imm_filename = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
         workflow = None
 
-        # try and find gprompts node (will not handle multiple instances reliably)
-        computed_prompt = None
-        if note_text and prompt and "workflow" in extra_pnginfo_new:
-            workflow = extra_pnginfo_new["workflow"] 
-            nodes = workflow.get("nodes", [])
-            for node in nodes:
-                if node.get("type") == "GPrompts": 
-                    dprint(f"GPrompts node:{node}")
-                    computed_prompt = node.get("properties",{}).get("_meta",{}).get("computed_result")
-        # add computed_prompt as top level in embedded in json
-        if computed_prompt:
-            extra_pnginfo_new['computed_prompt'] = computed_prompt
+        extracted_prompt = extract_computed_prompt(prompt)
+        #dprint(f">>>>>>>>>> last_prompt: {last_prompt}")
+        #dprint(f">>>>>>>>>> extracted_prompt: {extracted_prompt}")
+
         # Add note node to workflow
-        if note_text and prompt and "workflow" in extra_pnginfo_new:
+        if note_text and  "workflow" in extra_pnginfo_new:
             workflow = extra_pnginfo_new["workflow"]
             add_note_node_to_workflow(workflow, note_text)
 
         # Save image (always use save_images() to create EXIF and workflow data)
-
-        
-        dprint(f"extra_pnginfo_new:\n:{extra_pnginfo_new}")
-
+        #dprint(f"extra_pnginfo_new:\n:{extra_pnginfo_new}")
+        dprint(f"filename_prefix:{filename_prefix}")
         saved = super().save_images(image, filename_prefix, prompt, extra_pnginfo_new)
         #saved:{'ui': {'images': [{'filename': 'itest_00001_.png', 'subfolder': '2026-02-21', 'type': 'output'}]}}
         rc = saved
@@ -527,51 +596,86 @@ class GImageSaveImmich(SaveImage):
                 filename_prefix, self.output_dir, image.shape[1], image.shape[0])
         dprint(f"full_output_folder:{full_output_folder}")
         images = saved.get('ui',{}).get('images')
+        imm_fullpath = None
         if images:
-            imm_filename = images[0].get('filename', '')
+            imm_filename = images[0].get('filename', '') # itest_00001_.png
+            imm_fullpath = full_output_folder + os.sep + imm_filename # file to delete (maybe)
+            imm_filename = imm_filename.replace("_.png", ".png") # not sure why extra '_'
+        if not save_also:
+            # if not saving we get stuck at 00001 , so use a counter intead
+            imm_filename = re.sub(r'(\d+)(?=[^_]*$)', str(filename_counter), imm_filename)
         dprint(f"saved:{saved}")
         dprint(f"imm_filename:{imm_filename}")
-        imm_fullpath = full_output_folder + os.sep + imm_filename
         dprint(f"imm_fullpath:{imm_fullpath}")
         # Validation, I am putting this after the image is saved to file system
         server = the_settings.get("immich_hostname")
         port = the_settings.get("immich_port")
         api_key = the_settings.get('immich_apikey')
+        flag_includehostname = bool(the_settings.get('immich_includehostname'))
+        dprint(f"flag_includehostname:{flag_includehostname}")
         url = f"http://{server}:{port}"
         missing = get_missing(the_settings)
-        if missing:
-            print(f"\n🟡 IMMICH settings missing ({', '.join(missing)}), requesting from frontend...")
+        dprint("A0")
+        # should this be if missing,or True -- strange behavior with multiple users on server
+        if True:
+            print(f"\nIMMICH settings missing ({', '.join(missing)}), requesting from frontend...")
             # this call, forces javascript to resend settings to this code async via "/gprompts/setting". which is why we sleep after
             PromptServer.instance.send_sync("gadzoinks.request_settings", {})
-            time.sleep(0.3)
+            time.sleep(0.5)
             server  = the_settings.get("immich_hostname")
             port    = the_settings.get("immich_port")
             api_key = the_settings.get('immich_apikey')
             url     = f"http://{server}:{port}"
+            dprint("A1")
             missing = get_missing(the_settings)
+            dprint("A2")
         if missing:
-            print("\n🔴 IMMICH CONFIGURATION ERROR")
+            print("\nIMMICH CONFIGURATION ERROR")
             print(f"Save Image to Immich Server Node Missing: {', '.join(missing)}")
             print("Please configure in Settings:Gadzoinks")
             print(f"global settings:{the_settings}")
             # Generate an error so the user gets alerted to what is wrong
             error_msg = f": Missing {', '.join(missing)}. Open Settings, Gadzoinks to configure."
             raise ValueError(error_msg)
+        upload_rc = None
         try:
             if imm_filename:
                 importer = ImmichImporter(url, api_key)
                 ext=['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp', '.heic', '.heif', '.avif']
                 rating = None
-                importer.upload_photo(imm_fullpath, album, tags_list, rating, workflow)
+                upload_rc = None
+                if not save_also:
+                    directory = os.path.dirname(imm_fullpath)
+                    original_filename = os.path.basename(imm_fullpath)
+                    temp_fullpath = os.path.join(directory, imm_filename)
+                    os.rename(imm_fullpath, temp_fullpath)
+                    try:
+                        upload_rc = importer.upload_photo(temp_fullpath, album, tags = user_tags,structured_tags=structured_tags,rating=rating, comfy_workflow=workflow)
+                    finally:
+                        os.rename(temp_fullpath, imm_fullpath)
+                else:
+                    upload_rc = importer.upload_photo(imm_fullpath, album, tags = user_tags,structured_tags=structured_tags,rating=rating, comfy_workflow=workflow)
         finally:
-            # Delete the file if we're not keeping it
+            # mark file for Deletion if we're not keeping it
+            # cannot delete immediate or UI has nothing to show
             if not save_also and imm_fullpath and os.path.exists(imm_fullpath):
-                rc = {} 
-                try:
-                    os.unlink(imm_fullpath)
-                    dprint(f"Deleted file (save_also=False): {imm_fullpath}")
-                except Exception as e:
-                    dprint(f"Error deleting file {imm_fullpath}: {e}")
+                add_to_delete_queue(imm_fullpath)
+        try:
+            dprint(f"upload_rc:{upload_rc}")
+            if upload_rc and upload_rc.get("success"):
+                d = {}
+                if extra_pnginfo_new:
+                    if 'workflow' in extra_pnginfo_new:
+                        d['workflow'] = extra_pnginfo_new['workflow']
+                    if 'computed_prompt' in extra_pnginfo_new:
+                        d['computed_prompt'] = extra_pnginfo_new['computed_prompt']
+                if prompt:
+                    d['promptflow'] = prompt
+                if flag_includehostname:
+                    d["source_host"] =  socket.gethostname()
+                importer.gz_ingest(upload_rc.get("id"),upload_rc.get("album_id"),d)
+        except Exception as e:
+            dprint(f"Error /gz/ingest: {e}")
         return rc
 
 # ============================================================================
@@ -784,7 +888,8 @@ class GPrompts:
             },
             "hidden": {
                 "unique_id": "UNIQUE_ID",
-                "prompt": "PROMPT"
+                "prompt": "PROMPT",
+                "extra_pnginfo": "EXTRA_PNGINFO",
             }
         }
 
@@ -799,8 +904,9 @@ class GPrompts:
         "Supports weighted options and nested wildcards from text/json files."
     )
 
-    def process_dynamic_prompt(self, text, seed=0, iteration=-1,computed_prompt="",unique_id=0,prompt=None):
-        global last_processed_result
+    def process_dynamic_prompt(self, text, seed=0, iteration=-1,computed_prompt="",unique_id=0,prompt=None,extra_pnginfo=None):
+        global last_processed_result,last_processed_result_workflow_id,promtpForId
+        workflow_id = extra_pnginfo.get("workflow",{}).get("id")
         # If text changed, reset the iteration counter
         if self.previous_text != text:
             self.previous_text = text
@@ -823,6 +929,9 @@ class GPrompts:
             self.current_iteration += 1
         
         last_processed_result = processed_text
+        if workflow_id:
+            promtpForId[workflow_id] = processed_text
+            dprint(f"promtpForId: {promtpForId}")
         dprint(f"process_dynamic_prompt:     unique_id:{unique_id}  last_processed_result:{last_processed_result} QAQ")
         # send a message to front end so we can update the text in UI
         PromptServer.instance.send_sync("gprompts_executed", 
@@ -854,11 +963,13 @@ class GPrompts:
             )
         # This is a lot simpler just stick in node._meta, problem is if we have multiple gprompts in a workflow
         if prompt is not None:
+            dprint(f"processed_text: {processed_text}")
             node = prompt[unique_id]
             node["inputs"]["computed_prompt"] = processed_text  # update computed_prompt, value passed to us was previous version
             meta = node.get("_meta",{})
             meta["computed_prompt"] = processed_text
             node["_meta"] = meta
+            dprint(f"updated node:\n{node}")
         return (processed_text,dynamic_data,processed_text,seed)
 
     def parse_dynamic_prompt(self, text):
@@ -1200,6 +1311,7 @@ class GPrompts:
     @PromptServer.instance.routes.get("/gprompts/setting")
     async def setting(request):
         global the_settings
+        dprint(f"/gprompts/setting")
         params = request.rel_url.query
         for key, value in params.items():
             the_settings[key] = value
