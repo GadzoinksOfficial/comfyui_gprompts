@@ -75,10 +75,10 @@ settings_updated = threading.Event()
 # Placeholder defaults from older versions of the frontend settings screen.
 # A fresh client (new browser/incognito) would answer the settings broadcast
 # with these and clobber real values, so treat them as "unset".
-PLACEHOLDER_VALUES = {"secret", "example.local"}
+PLACEHOLDER_VALUES = {"spoon", "example.local"}
 
 def dprint(a):
-    print(a)
+    #print(a)
     pass
 
 def parse_bool_setting(value, default=False):
@@ -1003,6 +1003,37 @@ class GPrompts:
     }
     DEFAULT_DELIM_STYLE = "curly { }"
 
+    # ------------------------------------------------------------------
+    # Register support (named substitution): a computed value can be
+    # stored in one of ten registers (0-9) and reused later in the text.
+    #   Definition: {{0 monkey|chicken|dog}}  - normal block, but the chosen
+    #               value is stored in register 0 (digit + whitespace + options)
+    #   Recall:     {{0}}                     - substitutes register 0's value
+    # Works with all four block types. Sequential ({{ / <<) and random
+    # ({ / <) blocks have SEPARATE register banks, so <<0 and <0 are
+    # different registers. Banks reset for every generated prompt.
+    # Note: {{0|1|2}} is a plain options block (no whitespace after the
+    # digit), NOT a register definition.
+    # ------------------------------------------------------------------
+    REGISTER_RECALL_RE = re.compile(r'^\s*(\d)\s*$')
+    REGISTER_DEF_RE = re.compile(r'^\s*(\d)\s+(\S.*)$', re.DOTALL)
+
+    @classmethod
+    def parse_register_block(cls, content):
+        """Classify block content.
+        Returns (kind, register, body):
+          ('recall', '0', None)    for digit-only content
+          ('def',    '0', body)    for digit + whitespace + options
+          ('plain',  None, content) for everything else
+        """
+        m = cls.REGISTER_RECALL_RE.match(content)
+        if m:
+            return ('recall', m.group(1), None)
+        m = cls.REGISTER_DEF_RE.match(content)
+        if m:
+            return ('def', m.group(1), m.group(2))
+        return ('plain', None, content)
+
     def __init__(self):
         self.previous_text = None
         self.previous_delim_style = None
@@ -1030,10 +1061,14 @@ class GPrompts:
                 "text": ("STRING", {
                     "multiline": True, 
                     "default": "",
-                    "tooltip": "Input text with dynamic blocks. Curly style: {option1|option2} random, {{option1|option2}} sequential. Angle style: <option1|option2> random, <<option1|option2>> sequential. __wildcard__ for wildcard files."
+                    "tooltip": "Input text with dynamic blocks. Curly style: {option1|option2} random, {{option1|option2}} sequential. Angle style: <option1|option2> random, <<option1|option2>> sequential. __wildcard__ for wildcard files. Registers 0-9 reuse a chosen value: {{0 monkey|dog}} stores the pick, {{0}} recalls it (sequential and random banks are separate)."
                 }),
             },
             "optional": {
+                "delimiter_style": (list(cls.DELIM_STYLES.keys()), {
+                    "default": cls.DEFAULT_DELIM_STYLE,
+                    "tooltip": "Delimiters for dynamic blocks. 'curly { }' is the classic {a|b} / {{a|b}} syntax (now JSON-safe). 'angle < >' uses <a|b> / <<a|b>> instead, handy when the prompt itself is JSON."
+                }),
                 "seed": ("INT", {
                     "default": 0, 
                     "min": 0, 
@@ -1042,11 +1077,7 @@ class GPrompts:
                 }),
                 "iteration": ("INT", {
                     "default": -1,
-                    "tooltip": "Iteration counter (-1 for auto-increment, 0+ for fixed iteration)"
-                }),
-                "delimiter_style": (list(cls.DELIM_STYLES.keys()), {
-                    "default": cls.DEFAULT_DELIM_STYLE,
-                    "tooltip": "Delimiters for dynamic blocks. 'curly { }' is the classic {a|b} / {{a|b}} syntax (now JSON-safe). 'angle < >' uses <a|b> / <<a|b>> instead, handy when the prompt itself is JSON."
+                    "tooltip": "Iteration counter (-1 for auto-increment, 1+ for fixed iteration)"
                 }),
                 "computed_prompt": ("STRING", {
                     "multiline": True, 
@@ -1070,12 +1101,16 @@ class GPrompts:
     DESCRIPTION = (
         "Dynamic prompt generator with support for random {}, sequential {{}}, and wildcard __word__ syntax. "
         "A delimiter_style toggle switches to <> / <<>> delimiters for use inside JSON prompts. "
+        "Registers 0-9 let a chosen value be reused: {{0 monkey|dog}} stores the pick and {{0}} recalls it; "
+        "sequential and random blocks have separate register banks. "
         "Perfect for creating variations in prompts, batch processing, and A/B testing different prompt combinations. "
         "Supports weighted options and nested wildcards from text/json files."
     )
 
-    def process_dynamic_prompt(self, text, seed=0, iteration=-1,delimiter_style=None,computed_prompt="",unique_id=0,prompt=None,extra_pnginfo=None):
+    def process_dynamic_prompt(self, text, seed=0, iteration=-1,computed_prompt="",delimiter_style=None,unique_id=0,prompt=None,extra_pnginfo=None):
         global last_processed_result,last_processed_result_workflow_id,promtpForId
+        if iteration == 0: # silly but the UI will not accept -1 sometimes, so treat 0 as -1
+            iteration = -1
         workflow_id = extra_pnginfo.get("workflow",{}).get("id")
         if delimiter_style not in self.DELIM_STYLES:
             delimiter_style = self.DEFAULT_DELIM_STYLE
@@ -1167,40 +1202,63 @@ class GPrompts:
 
     def prepare_sequential_combinations(self, text):
         d = self.delims
-        # Find all sequential blocks
-        sequential_blocks = d["seq_re"].finditer(text)
-        block_options = []
-        
-        # Extract options from each sequential block
-        for block in sequential_blocks:
-            block_text = block.group(1)
+        # Classify every sequential block in order of appearance
+        blocks = []  # (kind, register, options-or-None)
+        for m in d["seq_re"].finditer(text):
+            kind, reg, body = self.parse_register_block(m.group(1))
+            if kind == 'recall':
+                blocks.append(('recall', reg, None))
+                continue
+            block_text = body if kind == 'def' else m.group(1)
             # Process wildcards in the block
             if '__' in block_text:
                 options = self.resolve_wildcard_references(block_text)
             else:
                 # Split by pipe and strip whitespace
                 options = [opt.strip() for opt in block_text.split('|')]
-            block_options.append(options)
-        
-        # Generate all combinations if there are sequential blocks
-        if block_options:
-            import itertools
-            all_combinations = list(itertools.product(*block_options))
-            
-            # Generate each prompt variant with the combinations
-            result_prompts = []
-            for combo in all_combinations:
-                temp_text = text
-                for replacement in combo:
-                    # Replace the first remaining sequential block.
-                    # Use a lambda so backslashes in the replacement (e.g. \" in
-                    # JSON strings) are inserted literally instead of being
-                    # interpreted as regex group references / escapes.
-                    temp_text = d["seq_re"].sub(lambda m, r=replacement: r, temp_text, count=1)
-                result_prompts.append(temp_text)
-            
-            # Store all combinations for future iterations
-            self.sequential_combinations = result_prompts
+            blocks.append((kind, reg, options))
+
+        if not blocks:
+            return
+
+        option_lists = [b[2] for b in blocks if b[0] != 'recall']
+
+        import itertools
+        # Recall-only text (no definitions) still yields one pass-through combo
+        all_combinations = list(itertools.product(*option_lists)) if option_lists else [()]
+
+        result_prompts = []
+        for combo in all_combinations:
+            # Pass 1: assign this combination's value to each non-recall
+            # block (in order) and capture register values, so recalls work
+            # even if they appear before their definition in the text.
+            registers = {}
+            values = []      # per-block replacement value; None marks a recall
+            combo_iter = iter(combo)
+            for kind, reg, _options in blocks:
+                if kind == 'recall':
+                    values.append(None)
+                else:
+                    v = next(combo_iter)
+                    values.append(v)
+                    if reg is not None:
+                        registers[reg] = v
+            # Pass 2: substitute all blocks in one sweep. Using a function
+            # also means backslashes in values (e.g. \" inside JSON strings)
+            # are inserted literally.
+            value_iter = iter(values)
+            def repl(m, _vi=value_iter, _regs=registers):
+                v = next(_vi)
+                if v is None:  # recall block
+                    _kind, reg, _body = self.parse_register_block(m.group(1))
+                    # Undefined register: leave the block as-is so the user
+                    # can see what went wrong
+                    return _regs.get(reg, m.group(0))
+                return v
+            result_prompts.append(d["seq_re"].sub(repl, text))
+
+        # Store all combinations for future iterations
+        self.sequential_combinations = result_prompts
 
     def resolve_wildcard_references(self, text):
         """
@@ -1331,11 +1389,27 @@ class GPrompts:
         """
         dprint(f"process_random_blocks: {text}")
         d = self.delims
+        # Random blocks get their own register bank, separate from the
+        # sequential bank ({0 != {{0 and <0 != <<0). Reset per generation.
+        registers = {}
         
         def replace_random(match):
             content = match.group(1)
             dprint(f"process_random_blocks content: {content}")
-            stripped = content.strip()
+            kind, reg, body = self.parse_register_block(content)
+            
+            if kind == 'recall':
+                if reg in registers:
+                    return registers[reg]
+                # Register may be defined later in the text: leave the block
+                # untouched so the next pass of the loop can resolve it. If
+                # it's never defined, the text stabilizes with the block
+                # visible, which surfaces the mistake to the user.
+                return match.group(0)
+            
+            work = body if kind == 'def' else content
+            stripped = work.strip()
+            value = None
             
             # Handle complete wildcard pattern
             if stripped.startswith('__') and stripped.endswith('__') and len(stripped) > 4:
@@ -1347,26 +1421,33 @@ class GPrompts:
                 wildcard_options = self.load_wildcard(wildcard_path)
                 dprint(f"Wildcard options: {wildcard_options}")
                 if not wildcard_options:
-                    return ""
-                
-                if isinstance(wildcard_options, dict):
+                    value = ""
+                elif isinstance(wildcard_options, dict):
                     # Weighted selection - separate keys and weights
                     ks = list(wildcard_options.keys())
                     vs = list(wildcard_options.values())
-                    return random.choices(ks, weights=vs, k=1)[0]
+                    value = random.choices(ks, weights=vs, k=1)[0]
                 else:
-                    return random.choice(wildcard_options)
+                    value = random.choice(wildcard_options)
+            else:
+                # In strict mode (angle delimiters), only pipe-separated
+                # content counts as a block; anything else is left untouched.
+                # This applies to register definitions too: otherwise prose
+                # like "3 < 5 and x > 2" parses as register 5 = "and x".
+                # A constant register is still possible: <5 monkey|monkey>.
+                if d["require_pipe"] and '|' not in work:
+                    return match.group(0)
+                
+                # Normal random selection from pipe-separated options
+                options = [opt.strip() for opt in work.split('|')]
+                if not options:
+                    value = ""
+                else:
+                    value = random.choice(options)
             
-            # In strict mode (angle delimiters), only pipe-separated content
-            # counts as a block; anything else is left untouched.
-            if d["require_pipe"] and '|' not in content:
-                return match.group(0)
-            
-            # Normal random selection from pipe-separated options
-            options = [opt.strip() for opt in content.split('|')]
-            if not options:
-                return ""
-            return random.choice(options)
+            if kind == 'def':
+                registers[reg] = value
+            return value
         
         # Process all random blocks. The compiled pattern already refuses to
         # match a doubled opening delimiter (sequential blocks), and the loop
