@@ -34,6 +34,13 @@ you will get a green light image, yellow, red, and then another green.
 
 If you use "a stop light showing { green | yellow | red }", each image will have a 33% chance of any color.
 
+normal delimeter is '{' and '}' but you can change that to '<' and '>', which is useful for json prompts.
+
+Registers:
+{0 cat | dog } will store the value in register 0, can be referenced with {0}. '{' and '{{' have their own registers. Regsiters 0..9 are available.
+
+"a {0 green | blue} {{0 dog|monkey}} standing on top of a {0} {{0}}"
+will generate "a green dog standing on top of a green dog"
 
 Wildcards
 wildcard files are either .txt or .json and go in comfyui/models/wildcards
@@ -70,8 +77,6 @@ for {{}} sequential you will get all 4 seasons.
 
 A wildcard reference to __hair__hairstyles__ , will use the file models/wildcards/hair/hairstyles.txt ( or .json )
 
-Version 2.0 Update
-Nothing has changed in regards to core functionality, but the node now outputs the computed_prompt and the seed.
 
 Advanced:
 there is an optional dynaprompt output that can connect to a node that understands how to utiltize it to extract the dynamic prompt and the computed prompt.   see the gadzoinks custom node as an example .
