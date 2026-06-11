@@ -34,6 +34,7 @@ import os
 from PIL import Image
 from PIL.ExifTags import TAGS
 import json
+import threading
 from .immich_importer import ImmichImporter
 
 
@@ -46,14 +47,154 @@ delete_queue_file = os.path.join(temp_dir, "gz_delete_queue.txt")
 last_processed_result = ""
 last_processed_result_workflow_id = 0
 promtpForId = {}
-the_settings = {}
 filename_counter = 0
+
+# ----------------------------------------------------------------------------
+# Settings handling
+#
+# Settings originate in the browser frontend (ComfyUI settings screen) and are
+# pushed to us via GET /gprompts/setting. Previously they lived only in an
+# in-memory dict, which had two failure modes:
+#   1. "gadzoinks.request_settings" is broadcast to ALL connected clients, and
+#      any client (second tab, half-connected VPN session, client whose
+#      settings store hadn't loaded) could answer with blank values and
+#      clobber the good ones -> settings "forgotten" mid-batch.
+#   2. Every save depended on a live frontend round-trip (send_sync + fixed
+#      0.5s sleep). Over a weak/VPN connection the resend arrives late or
+#      never, and the upload fails even though we knew the settings moments
+#      earlier.
+# Now: blank values never overwrite non-blank ones, any complete set of
+# settings is persisted to disk and reloaded at startup, and the wait for a
+# frontend response is event-driven with a bounded timeout instead of a
+# fixed sleep. The frontend becomes a refresh source, not a dependency.
+# ----------------------------------------------------------------------------
+the_settings = {}
+settings_lock = threading.Lock()
+settings_updated = threading.Event()
+
+# Placeholder defaults from older versions of the frontend settings screen.
+# A fresh client (new browser/incognito) would answer the settings broadcast
+# with these and clobber real values, so treat them as "unset".
+PLACEHOLDER_VALUES = {"secret", "example.local"}
+
+def dprint(a):
+    print(a)
+    pass
+
+def parse_bool_setting(value, default=False):
+    """Settings arrive as strings from the frontend; bool('false') is True,
+    so parse explicitly."""
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return default
+    return str(value).strip().lower() in ("true", "1", "on", "yes")
+
+def apply_settings(params):
+    """Merge a settings payload from a frontend client into the_settings.
+    Blank values and known placeholder defaults never overwrite good values.
+    Persists to disk when the result is a complete set. Returns list of
+    ignored keys."""
+    skipped = []
+    with settings_lock:
+        for key, value in params.items():
+            sval = "" if value is None else str(value).strip()
+            if sval == "" or sval in PLACEHOLDER_VALUES:
+                if the_settings.get(key):
+                    skipped.append(key)
+                    continue
+            the_settings[key] = value
+            dprint(f"setting [{key}]={value}")
+        if not get_missing(the_settings):
+            persist_settings(dict(the_settings))
+    # Wake any execute() currently waiting on a settings refresh
+    settings_updated.set()
+    return skipped
+
+def get_settings_file():
+    """Where we persist the last known-good settings."""
+    try:
+        base = folder_paths.get_user_directory()
+    except Exception:
+        # Older ComfyUI without get_user_directory: keep it next to this node
+        base = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base, "gadzoinks_settings.json")
+
+def load_persisted_settings():
+    try:
+        with open(get_settings_file(), "r") as f:
+            data = json.load(f)
+            if isinstance(data, dict):
+                return data
+    except FileNotFoundError:
+        pass
+    except Exception as e:
+        print(f"Gadzoinks: could not read persisted settings: {e}")
+    return {}
+
+def persist_settings(settings):
+    """Atomically write settings to disk (write temp file, then rename)."""
+    try:
+        path = get_settings_file()
+        tmp = path + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(settings, f, indent=2)
+        os.replace(tmp, path)
+    except Exception as e:
+        print(f"Gadzoinks: could not persist settings: {e}")
+
+# Load last known-good settings at startup so a server restart (or a frontend
+# that never connects, e.g. headless/API usage) still has working values.
+the_settings.update(load_persisted_settings())
+
+def get_immich_settings(wait_seconds=4.0):
+    """
+    Return a consistent snapshot of settings for one save operation.
+
+    If the current settings are complete, return immediately (no sleep, no
+    frontend round-trip - this is the fast path for every image in a batch).
+    If incomplete, ask connected frontends to resend and wait, event-driven,
+    up to wait_seconds. If the frontend is unreachable (weak VPN link, no
+    browser attached), fall back to the persisted settings from disk.
+    """
+    with settings_lock:
+        snap = dict(the_settings)
+    if not get_missing(snap):
+        return snap
+
+    # Ask frontends to resend. send_sync can fail if no client is attached.
+    settings_updated.clear()
+    try:
+        PromptServer.instance.send_sync("gadzoinks.request_settings", {})
+    except Exception as e:
+        dprint(f"get_immich_settings: request_settings send failed: {e}")
+
+    deadline = time.time() + wait_seconds
+    while time.time() < deadline:
+        settings_updated.wait(0.25)
+        settings_updated.clear()
+        with settings_lock:
+            snap = dict(the_settings)
+        if not get_missing(snap):
+            return snap
+
+    # Frontend didn't answer in time - fall back to last persisted good values
+    disk = load_persisted_settings()
+    if disk:
+        merged = dict(disk)
+        # current non-blank values still win over older persisted ones
+        for k, v in snap.items():
+            if v not in (None, ""):
+                merged[k] = v
+        if not get_missing(merged):
+            print("Gadzoinks: frontend unreachable, using persisted settings")
+            with settings_lock:
+                the_settings.update(merged)
+            return merged
+    return snap
 
 print("LOADING GPROMPTS")
 
-def dprint(a):
-    #print(a)
-    pass
 
 ###
 # Utility
@@ -499,7 +640,7 @@ class GImageSaveImmich(SaveImage):
                     "tooltip": "optional tags for images. Comma seperated. Merged with Tags from Settings."
                 }),
                 "save_also" : ("BOOLEAN", {
-                    "default": the_settings.get("immich_save_also",True),
+                    "default": parse_bool_setting(the_settings.get("immich_save_also"), default=True),
                     "tooltip": "Also save image to disk on the comfyui server"
                 }),
             },
@@ -538,6 +679,11 @@ class GImageSaveImmich(SaveImage):
         workflow_id = extra_pnginfo.get("workflow",{}).get("id")
         last_prompt = promtpForId.get(workflow_id)
         process_deletion_queue()
+        # One consistent settings snapshot for this whole save. Fast path is
+        # instant when settings are already known; only blocks (bounded) when
+        # they are genuinely missing. Falls back to persisted settings if the
+        # frontend is unreachable (e.g. semi-disconnected VPN client).
+        settings = get_immich_settings()
         #dprint(f"workflow_id {workflow_id}   last_prompt:{last_prompt}")
         #dprint(f"entry extra_pnginfo:\n{extra_pnginfo}")
         #dprint(f"prompt:\n{prompt}")
@@ -559,8 +705,8 @@ class GImageSaveImmich(SaveImage):
             else:
                 extra_pnginfo_new["computed_prompt"] = last_prompt
         if not album:
-            album = the_settings.get('immich_default_album')
-        basetags = the_settings.get('immich_base_tags') or ""
+            album = settings.get('immich_default_album')
+        basetags = settings.get('immich_base_tags') or ""
         tags = tags or ""
         all_tags = (tags + ',' + basetags).split(',')
         user_tags = list({tag.strip() for tag in all_tags if tag.strip()})
@@ -608,32 +754,18 @@ class GImageSaveImmich(SaveImage):
         dprint(f"imm_filename:{imm_filename}")
         dprint(f"imm_fullpath:{imm_fullpath}")
         # Validation, I am putting this after the image is saved to file system
-        server = the_settings.get("immich_hostname")
-        port = the_settings.get("immich_port")
-        api_key = the_settings.get('immich_apikey')
-        flag_includehostname = bool(the_settings.get('immich_includehostname'))
+        server = settings.get("immich_hostname")
+        port = settings.get("immich_port")
+        api_key = settings.get('immich_apikey')
+        flag_includehostname = parse_bool_setting(settings.get('immich_includehostname'))
         dprint(f"flag_includehostname:{flag_includehostname}")
         url = f"http://{server}:{port}"
-        missing = get_missing(the_settings)
-        dprint("A0")
-        # should this be if missing,or True -- strange behavior with multiple users on server
-        if True:
-            print(f"\nIMMICH settings missing ({', '.join(missing)}), requesting from frontend...")
-            # this call, forces javascript to resend settings to this code async via "/gprompts/setting". which is why we sleep after
-            PromptServer.instance.send_sync("gadzoinks.request_settings", {})
-            time.sleep(0.5)
-            server  = the_settings.get("immich_hostname")
-            port    = the_settings.get("immich_port")
-            api_key = the_settings.get('immich_apikey')
-            url     = f"http://{server}:{port}"
-            dprint("A1")
-            missing = get_missing(the_settings)
-            dprint("A2")
+        missing = get_missing(settings)
         if missing:
             print("\nIMMICH CONFIGURATION ERROR")
             print(f"Save Image to Immich Server Node Missing: {', '.join(missing)}")
             print("Please configure in Settings:Gadzoinks")
-            print(f"global settings:{the_settings}")
+            print(f"settings snapshot:{settings}")
             # Generate an error so the user gets alerted to what is wrong
             error_msg = f": Missing {', '.join(missing)}. Open Settings, Gadzoinks to configure."
             raise ValueError(error_msg)
@@ -840,11 +972,44 @@ class StringFormatter:
 # Dynamic prompt text genereration
 #
 class GPrompts:
+    # Delimiter styles for dynamic blocks.
+    #
+    # "curly { }"  - the original syntax: {a|b} random, {{a|b}} sequential.
+    #   The random pattern is JSON-safe: block content may not contain
+    #   braces or double quotes, so structural JSON like {"key": ...} or {}
+    #   can never match (every non-empty JSON object has a '"' immediately
+    #   inside its braces). Literal '{{' / '}}' adjacency never occurs in
+    #   the *structure* of valid JSON, so the sequential pattern is safe too.
+    #
+    # "angle < >"  - alternate syntax for JSON prompts: <a|b> random,
+    #   <<a|b>> sequential. Avoids '{' entirely. require_pipe is True so
+    #   that incidental comparisons in prose ("3 < 5 and x > 2") are never
+    #   treated as a block: content must contain '|' or be a __wildcard__.
+    DELIM_STYLES = {
+        "curly { }": {
+            "open": "{",
+            "seq_token": "{{",
+            "seq_re": re.compile(r'\{\{(.*?)\}\}', re.DOTALL),
+            "rand_re": re.compile(r'(?<!\{)\{([^{}"]+?)\}'),
+            "require_pipe": False,  # legacy behavior: {word} still expands to word
+        },
+        "angle < >": {
+            "open": "<",
+            "seq_token": "<<",
+            "seq_re": re.compile(r'<<(.*?)>>', re.DOTALL),
+            "rand_re": re.compile(r'(?<!<)<([^<>]+?)>'),
+            "require_pipe": True,
+        },
+    }
+    DEFAULT_DELIM_STYLE = "curly { }"
+
     def __init__(self):
         self.previous_text = None
+        self.previous_delim_style = None
         self.current_iteration = 0
         self.wildcard_cache = {}
         self.sequential_combinations = []
+        self.delims = self.DELIM_STYLES[self.DEFAULT_DELIM_STYLE]
         
         # Set up folder paths
         self.register_wildcard_path()
@@ -865,7 +1030,7 @@ class GPrompts:
                 "text": ("STRING", {
                     "multiline": True, 
                     "default": "",
-                    "tooltip": "Input text with dynamic blocks: {option1|option2} for random, {{option1|option2}} for sequential, __wildcard__ for wildcard files"
+                    "tooltip": "Input text with dynamic blocks. Curly style: {option1|option2} random, {{option1|option2}} sequential. Angle style: <option1|option2> random, <<option1|option2>> sequential. __wildcard__ for wildcard files."
                 }),
             },
             "optional": {
@@ -878,6 +1043,10 @@ class GPrompts:
                 "iteration": ("INT", {
                     "default": -1,
                     "tooltip": "Iteration counter (-1 for auto-increment, 0+ for fixed iteration)"
+                }),
+                "delimiter_style": (list(cls.DELIM_STYLES.keys()), {
+                    "default": cls.DEFAULT_DELIM_STYLE,
+                    "tooltip": "Delimiters for dynamic blocks. 'curly { }' is the classic {a|b} / {{a|b}} syntax (now JSON-safe). 'angle < >' uses <a|b> / <<a|b>> instead, handy when the prompt itself is JSON."
                 }),
                 "computed_prompt": ("STRING", {
                     "multiline": True, 
@@ -900,16 +1069,21 @@ class GPrompts:
     
     DESCRIPTION = (
         "Dynamic prompt generator with support for random {}, sequential {{}}, and wildcard __word__ syntax. "
+        "A delimiter_style toggle switches to <> / <<>> delimiters for use inside JSON prompts. "
         "Perfect for creating variations in prompts, batch processing, and A/B testing different prompt combinations. "
         "Supports weighted options and nested wildcards from text/json files."
     )
 
-    def process_dynamic_prompt(self, text, seed=0, iteration=-1,computed_prompt="",unique_id=0,prompt=None,extra_pnginfo=None):
+    def process_dynamic_prompt(self, text, seed=0, iteration=-1,delimiter_style=None,computed_prompt="",unique_id=0,prompt=None,extra_pnginfo=None):
         global last_processed_result,last_processed_result_workflow_id,promtpForId
         workflow_id = extra_pnginfo.get("workflow",{}).get("id")
-        # If text changed, reset the iteration counter
-        if self.previous_text != text:
+        if delimiter_style not in self.DELIM_STYLES:
+            delimiter_style = self.DEFAULT_DELIM_STYLE
+        self.delims = self.DELIM_STYLES[delimiter_style]
+        # If text or delimiter style changed, reset the iteration counter
+        if self.previous_text != text or self.previous_delim_style != delimiter_style:
             self.previous_text = text
+            self.previous_delim_style = delimiter_style
             self.current_iteration = 0
             self.sequential_combinations = []
         
@@ -973,26 +1147,28 @@ class GPrompts:
         return (processed_text,dynamic_data,processed_text,seed)
 
     def parse_dynamic_prompt(self, text):
+        d = self.delims
         # First, process all sequential blocks and generate combinations if needed
-        if not self.sequential_combinations and '{{' in text:
+        if not self.sequential_combinations and d["seq_token"] in text:
             # Initial calculation of all sequential combinations
             self.prepare_sequential_combinations(text)
             dprint(self.sequential_combinations)
             
         # If we have sequential combinations, use the appropriate one for this iteration
-        if self.sequential_combinations and '{{' in text:
+        if self.sequential_combinations and d["seq_token"] in text:
             combination_index = self.current_iteration % len(self.sequential_combinations)
             text = self.sequential_combinations[combination_index]
         
         # Process random blocks (this needs to happen on EVERY iteration)
-        if '{' in text:
+        if d["open"] in text:
             text = self.process_random_blocks(text)
         
         return text
 
     def prepare_sequential_combinations(self, text):
+        d = self.delims
         # Find all sequential blocks
-        sequential_blocks = re.finditer(r'\{\{(.*?)\}\}', text,flags=re.DOTALL)
+        sequential_blocks = d["seq_re"].finditer(text)
         block_options = []
         
         # Extract options from each sequential block
@@ -1015,9 +1191,12 @@ class GPrompts:
             result_prompts = []
             for combo in all_combinations:
                 temp_text = text
-                for i, replacement in enumerate(combo):
-                    pattern = r'\{\{.*?\}\}'  # Find the first sequential block
-                    temp_text = re.sub(pattern, replacement, temp_text, count=1,flags=re.DOTALL)
+                for replacement in combo:
+                    # Replace the first remaining sequential block.
+                    # Use a lambda so backslashes in the replacement (e.g. \" in
+                    # JSON strings) are inserted literally instead of being
+                    # interpreted as regex group references / escapes.
+                    temp_text = d["seq_re"].sub(lambda m, r=replacement: r, temp_text, count=1)
                 result_prompts.append(temp_text)
             
             # Store all combinations for future iterations
@@ -1139,18 +1318,29 @@ class GPrompts:
 
     def process_random_blocks(self, text):
         """
-        Process random blocks in the text, handling wildcards correctly
+        Process random blocks in the text, handling wildcards correctly.
+
+        Uses the active delimiter style (self.delims). Patterns are JSON-safe:
+        - curly: {content} matches only when content contains no braces and no
+          double quotes, so JSON structure like {"key": value} or {} is never
+          touched. Block content inside a JSON string value works because a
+          JSON string cannot contain an unescaped '"'... and escaped quotes
+          (\") would disqualify the block anyway - keep quotes out of options.
+        - angle: <content> additionally requires a '|' or a __wildcard__, so
+          prose like "3 < 5 and x > 2" is never treated as a block.
         """
         dprint(f"process_random_blocks: {text}")
+        d = self.delims
         
         def replace_random(match):
             content = match.group(1)
             dprint(f"process_random_blocks content: {content}")
+            stripped = content.strip()
             
             # Handle complete wildcard pattern
-            if content.startswith('__') and content.endswith('__'):
+            if stripped.startswith('__') and stripped.endswith('__') and len(stripped) > 4:
                 # Extract the full wildcard path
-                wildcard_path = content[2:-2]  # Remove the leading and trailing __
+                wildcard_path = stripped[2:-2]  # Remove the leading and trailing __
                 dprint(f"Found full wildcard pattern: {wildcard_path}")
                 
                 # Load wildcards directly with the full path
@@ -1166,24 +1356,24 @@ class GPrompts:
                     return random.choices(ks, weights=vs, k=1)[0]
                 else:
                     return random.choice(wildcard_options)
+            
+            # In strict mode (angle delimiters), only pipe-separated content
+            # counts as a block; anything else is left untouched.
+            if d["require_pipe"] and '|' not in content:
+                return match.group(0)
+            
+            # Normal random selection from pipe-separated options
+            options = [opt.strip() for opt in content.split('|')]
+            if not options:
                 return ""
-            else:
-                # Normal random selection from pipe-separated options
-                options = [opt.strip() for opt in content.split('|')]
-                if not options:
-                    return ""
-                return random.choice(options)
+            return random.choice(options)
         
-        # Process all random blocks
-        has_sequential = '{{' in text
-        
-        # Process all non-sequential random blocks
-        while '{' in text:
-            # Use the appropriate regex pattern
-            if has_sequential:
-                new_text = re.sub(r'(?<!\{)\{([^\{].*?)\}', replace_random, text,flags=re.DOTALL)
-            else:
-                new_text = re.sub(r'\{([^\{].*?)\}', replace_random, text,flags=re.DOTALL)
+        # Process all random blocks. The compiled pattern already refuses to
+        # match a doubled opening delimiter (sequential blocks), and the loop
+        # exits as soon as a pass makes no changes - so leftover structural
+        # characters (e.g. JSON braces) cannot cause an infinite loop.
+        while d["open"] in text:
+            new_text = d["rand_re"].sub(replace_random, text)
             if new_text == text:  # No more replacements made
                 break
             text = new_text
@@ -1310,14 +1500,30 @@ class GPrompts:
 ######
     @PromptServer.instance.routes.get("/gprompts/setting")
     async def setting(request):
-        global the_settings
-        dprint(f"/gprompts/setting")
-        params = request.rel_url.query
-        for key, value in params.items():
-            the_settings[key] = value
-            dprint(f"setting [{key}]={value}")
+        # Legacy GET endpoint (query params). Kept for backwards compatibility
+        # with older frontend JS; new JS uses the POST endpoint below so the
+        # API key doesn't travel in the URL / server logs.
+        dprint(f"/gprompts/setting GET")
+        params = dict(request.rel_url.query)
+        skipped = apply_settings(params)
+        if skipped:
+            dprint(f"setting: ignored blank/placeholder values for {skipped}")
         dprint(f"setting the_settings {the_settings}")
         return web.Response(text=f"Parameters received {params}")
+
+    @PromptServer.instance.routes.post("/gprompts/setting")
+    async def setting_post(request):
+        dprint(f"/gprompts/setting POST")
+        try:
+            params = await request.json()
+            if not isinstance(params, dict):
+                raise ValueError("expected JSON object")
+        except Exception as e:
+            return web.json_response({"ok": False, "error": str(e)}, status=400)
+        skipped = apply_settings(params)
+        if skipped:
+            dprint(f"setting: ignored blank/placeholder values for {skipped}")
+        return web.json_response({"ok": True, "ignored": skipped})
 #######
 # Node registration
 NODE_CLASS_MAPPINGS = {
@@ -1337,4 +1543,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
 }
 
 __all__ = ['NODE_CLASS_MAPPINGS', 'NODE_DISPLAY_NAME_MAPPINGS']
+
 
