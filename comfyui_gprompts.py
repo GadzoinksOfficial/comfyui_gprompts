@@ -13,6 +13,10 @@ import socket
 import uuid
 import sys
 import time
+from typing_extensions import override
+from fractions import Fraction
+from comfy_api.latest import ComfyExtension, io, ui, Input, InputImpl, Types
+from comfy.cli_args import args
 from pathlib import Path
 from collections import defaultdict
 import folder_paths
@@ -28,6 +32,7 @@ import traceback
 import numpy as np
 from aiohttp import web
 from nodes import PreviewImage, SaveImage
+from comfy_extras.nodes_video import SaveVideo
 from comfy_execution.graph import ExecutionBlocker
 import folder_paths
 import os
@@ -48,6 +53,10 @@ last_processed_result = ""
 last_processed_result_workflow_id = 0
 promtpForId = {}
 filename_counter = 0
+
+def get_last_prompt(workflow_id):
+    global promtpForId
+    return promtpForId.get(workflow_id)
 
 # ----------------------------------------------------------------------------
 # Settings handling
@@ -78,7 +87,7 @@ settings_updated = threading.Event()
 PLACEHOLDER_VALUES = {"spoon", "example.local"}
 
 def dprint(a):
-    #print(a)
+    print(a)
     pass
 
 def parse_bool_setting(value, default=False):
@@ -787,6 +796,7 @@ class GImageSaveImmich(SaveImage):
                         os.rename(temp_fullpath, imm_fullpath)
                 else:
                     upload_rc = importer.upload_photo(imm_fullpath, album, tags = user_tags,structured_tags=structured_tags,rating=rating, comfy_workflow=workflow)
+                dprint(f"upload_rc:{upload_rc}")
         finally:
             # mark file for Deletion if we're not keeping it
             # cannot delete immediate or UI has nothing to show
@@ -1044,6 +1054,53 @@ class GPrompts:
         
         # Set up folder paths
         self.register_wildcard_path()
+
+    @staticmethod 
+    def _split_options(content):
+        """
+        Split block content on unescaped top-level '|'.
+
+        Rules:
+        - single quotes are ordinary apostrophes
+        - backslash only escapes the next '|' or '\\'
+        - any other backslash is literal
+        """
+        parts = []
+        current = []
+
+        i = 0
+        n = len(content)
+
+        while i < n:
+            ch = content[i]
+
+            # Handle escape sequences:
+            # \|  -> literal |
+            # \\  -> literal \
+            if ch == "\\":
+                if i + 1 < n and content[i + 1] in ("|", "\\"):
+                    current.append(content[i + 1])
+                    i += 2
+                    continue
+                else:
+                    current.append(ch)
+                    i += 1
+                    continue
+
+            if ch == "|":
+                parts.append("".join(current))
+                current = []
+            else:
+                current.append(ch)
+
+            i += 1
+
+        if parts:
+            parts.append("".join(current))
+            return [part.strip() for part in parts]
+
+        # No top-level pipe found
+        return None
     
     def beforeQueued(self, args):
         dprint(f"beforeQueued args:{args}")
@@ -1075,10 +1132,6 @@ class GPrompts:
                     "max": 0xffffffffffffffff,
                     "tooltip": "Seed for random generation (combined with iteration for reproducibility)"
                 }),
-                "iteration": ("INT", {
-                    "default": -1,
-                    "tooltip": "Iteration counter (-1 for auto-increment, 1+ for fixed iteration)"
-                }),
                 "computed_prompt": ("STRING", {
                     "multiline": True, 
                     "readonly": True,
@@ -1093,8 +1146,8 @@ class GPrompts:
             }
         }
 
-    RETURN_TYPES = ("STRING", "DYNPROMPT", "STRING", "INT")
-    RETURN_NAMES = ("text", "dynprompt", "computed_prompt", "seed")
+    RETURN_TYPES = ("STRING", "STRING", "STRING", "INT")
+    RETURN_NAMES = ("text", "dynamic_prompt", "computed_prompt", "seed")
     FUNCTION = "process_dynamic_prompt"
     CATEGORY = "text"
     
@@ -1107,10 +1160,9 @@ class GPrompts:
         "Supports weighted options and nested wildcards from text/json files."
     )
 
-    def process_dynamic_prompt(self, text, seed=0, iteration=-1,computed_prompt="",delimiter_style=None,unique_id=0,prompt=None,extra_pnginfo=None):
+    def process_dynamic_prompt(self, text, seed=0, computed_prompt="",delimiter_style=None,unique_id=0,prompt=None,extra_pnginfo=None):
         global last_processed_result,last_processed_result_workflow_id,promtpForId
-        if iteration == 0: # silly but the UI will not accept -1 sometimes, so treat 0 as -1
-            iteration = -1
+        dynamic_text = text
         workflow_id = extra_pnginfo.get("workflow",{}).get("id")
         if delimiter_style not in self.DELIM_STYLES:
             delimiter_style = self.DEFAULT_DELIM_STYLE
@@ -1122,10 +1174,6 @@ class GPrompts:
             self.current_iteration = 0
             self.sequential_combinations = []
         
-        # If iteration is provided (not -1), use it directly
-        if iteration >= 0:
-            self.current_iteration = iteration
-        
         # Set the random seed for reproducibility
         if seed > 0:
             random.seed(seed + self.current_iteration)
@@ -1134,8 +1182,7 @@ class GPrompts:
         processed_text = self.parse_dynamic_prompt(text)
         
         # Increment the iteration counter for next time
-        if iteration == -1:
-            self.current_iteration += 1
+        self.current_iteration += 1
         
         last_processed_result = processed_text
         if workflow_id:
@@ -1179,7 +1226,7 @@ class GPrompts:
             meta["computed_prompt"] = processed_text
             node["_meta"] = meta
             dprint(f"updated node:\n{node}")
-        return (processed_text,dynamic_data,processed_text,seed)
+        return (processed_text,dynamic_text,processed_text,seed)
 
     def parse_dynamic_prompt(self, text):
         d = self.delims
@@ -1215,7 +1262,10 @@ class GPrompts:
                 options = self.resolve_wildcard_references(block_text)
             else:
                 # Split by pipe and strip whitespace
-                options = [opt.strip() for opt in block_text.split('|')]
+                #options = [opt.strip() for opt in block_text.split('|')]
+                options = self._split_options(block_text)
+                if options is None:
+                    options = [block_text.strip()]
             blocks.append((kind, reg, options))
 
         if not blocks:
@@ -1439,7 +1489,11 @@ class GPrompts:
                     return match.group(0)
                 
                 # Normal random selection from pipe-separated options
-                options = [opt.strip() for opt in work.split('|')]
+                options = self._split_options(work)
+                #options = [opt.strip() for opt in work.split('|')]
+                if options is None:
+                    if d["require_pipe"]:
+                        return match.group(0)
                 if not options:
                     value = ""
                 else:
@@ -1609,20 +1663,22 @@ class GPrompts:
 # Node registration
 NODE_CLASS_MAPPINGS = {
     "GPrompts": GPrompts,
-    "Save Image to Immich Server" : GImageSaveImmich,
-    "Save Image With Notes": GImageSaveWithExtraMetadata,
-    "String Formatter": StringFormatter,
-    "Batch Image Loader":LoadImagesBatch
+    "GImageSaveImmich" : GImageSaveImmich,
+    "GImageSaveWithExtraMetadata": GImageSaveWithExtraMetadata,
+    "StringFormatter": StringFormatter,
+    "LoadImagesBatch":LoadImagesBatch
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "GPrompts": "Dynamic Prompts",
-    "Save Image to Immich Server" : "Save the to a Immich Server",
-    "Save Image With Notes": "Save Image and add Note node to embedded workflow",
-    "String Formatter": "String Formatter (sprintf)",
-    "Batch Image Loader" : "Load images from folder"
+    "GImageSaveImmich" : "Save the image to a Immich Server",
+    "GImageSaveWithExtraMetadata": "Save Image and add Note node to embedded workflow",
+    "StringFormatter": "String Formatter (sprintf)",
+    "LoadImagesBatch" : "Load images from folder"
 }
 
 __all__ = ['NODE_CLASS_MAPPINGS', 'NODE_DISPLAY_NAME_MAPPINGS']
+
+
 
 

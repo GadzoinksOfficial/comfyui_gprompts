@@ -1,97 +1,152 @@
 # ComfyUI GPrompts Nodes
 
 ## Introduction
-This package provides four custom nodes for ComfyUI that enhance prompt generation, string formatting, and image saving capabilities.
+This package provides custom nodes for ComfyUI that enhance prompt generation, string formatting, and saving images, video, and audio.
 
 ## Nodes Overview
-- **GPrompts** - Create dynamic prompts with random or sequential selection. Also support wildcard files.
-- **String Formatter** - Build custom output strings from multiple inputs and system variables
-- **Save Image With Notes** - Save images with embedded workflow notes and metadata
+- **GPrompts** - Create dynamic prompts with random or sequential selection. Also supports wildcard files.
+- **String Formatter** - Build custom output strings from multiple inputs and system variables.
+- **Save Image With Notes** - Save images with embedded workflow notes and metadata.
+- **Load Images From Folder** - Load images from a folder one at a time, in order, or randomly, and read back the prompt they were created with.
 - **Save Image To Immich Server** - Save images with embedded workflow notes to an Immich server.
+- **Save Video To Immich Server** - Save videos to an Immich server.
+- **Save Audio To Immich Server** - Save audio to an Immich server (as an mp4 with a cover image).
 
 ---
 
 ## GPrompts Node
 
 ### Description
-This is another dyanmic prompts node for Comfyui, I found most of the ones out there to be either
+This is another dynamic prompts node for ComfyUI. I found most of the ones out there to be either
 too complicated or too limiting, so I wrote my own.
 
-### Prompt Format Syntax
-
 ### Basics
+Create a GPrompts node and connect its output to a CLIP node text input.
+
+Format of a dynamic prompt:
+```
+{ cat | dog | jackalope }        random selection
+{{ green | yellow | red }}       sequential selection
 ```
 
-create a gprompts node and connect its output
-to a clip node text input
-
-Format of a dynamic prompt
-{ cat | dog | jackalope  }     random selection
-{{ green | yellow | red }}      sequential seletion
-
-If you generate 4 images with "a stop light showing {{ green | yellow | red }}"
+If you generate 4 images with `a stop light showing {{ green | yellow | red }}`
 you will get a green light image, yellow, red, and then another green.
 
-If you use "a stop light showing { green | yellow | red }", each image will have a 33% chance of any color.
+If you use `a stop light showing { green | yellow | red }`, each image will have a 33% chance of any color.
 
-normal delimeter is '{' and '}' but you can change that to '<' and '>', which is useful for json prompts.
+The sequential cycle starts at the first combination and starts over whenever the prompt text changes (or ComfyUI is restarted).
 
-Registers:
-{0 cat | dog } will store the value in register 0, can be referenced with {0}. '{' and '{{' have their own registers. Regsiters 0..9 are available.
+The normal delimiters are `{` and `}`, but you can change them to `<` and `>`, which is useful for JSON prompts:
+```
+< cat | dog >          random selection
+<< green | red >>      sequential selection
+```
 
-"a {0 green | blue} {{0 dog|monkey}} standing on top of a {0} {{0}}"
-will generate "a green dog standing on top of a green dog"
+### Registers
+`{0 cat | dog }` will store the chosen value in register 0, which can be referenced later with `{0}`.
+`{` and `{{` have their own separate registers. Registers 0..9 are available.
 
-Wildcards
-wildcard files are either .txt or .json and go in comfyui/models/wildcards
+```
+a {0 green | blue} {{0 dog|monkey}} standing on top of a {0} {{0}}
+```
+will generate something like `a green dog standing on top of a green dog`.
 
-you can use a wildcard file with a list of options
-"a woman with {{__hair_color__}} {{__hair_style__}} hair"
+Note: `{{0|1|2}}` (no space after the digit) is a normal options block, not a register.
 
-This will use the contents of comfyui/models/wildcards/hair_color.txt
-and hair_style.txt
+### Quotes and special characters inside blocks
+**Avoid using `"` and `'` inside `{ }` and `{{ }}` blocks.** Double quotes in particular will stop a random block from being recognized, and quotes can break JSON prompts.
 
-assuming the files are
+Two ways around this:
+
+1. **Keep the quotes outside the block.** This works fine:
+   ```
+   wearing a T shirt that says "{ hello | goodbye }"
+   ```
+2. **Use a Unicode character that looks like a quote.** Copy and paste one of these into your options:
+
+   **Instead of `"` (double quote)**
+
+   | Character | Name | Code point |
+   |-----------|------|------------|
+   | `“` | Left double quotation mark | U+201C |
+   | `”` | Right double quotation mark | U+201D |
+   | `″` | Double prime | U+2033 |
+   | `＂` | Fullwidth quotation mark | U+FF02 |
+   | `„` | Double low-9 quotation mark | U+201E |
+   | `〃` | Ditto mark | U+3003 |
+
+   **Instead of `'` (single quote / apostrophe)**
+
+   | Character | Name | Code point |
+   |-----------|------|------------|
+   | `‘` | Left single quotation mark | U+2018 |
+   | `’` | Right single quotation mark | U+2019 |
+   | `′` | Prime | U+2032 |
+   | `＇` | Fullwidth apostrophe | U+FF07 |
+   | `ʼ` | Modifier letter apostrophe | U+02BC |
+   | `‚` | Single low-9 quotation mark | U+201A |
+
+   Example:
+   ```
+   a sign that reads { “OPEN” | “CLOSED” | “BACK IN 5” }
+   a { cat’s | dog’s } toy
+   ```
+
+If you need a literal `|` inside an option, escape it with a backslash: `\|`.
+
+### Wildcards
+Wildcard files are either .txt or .json and go in `comfyui/models/wildcards`.
+
+You can use a wildcard file with a list of options:
+```
+a woman with {{__hair_color__}} {{__hair_style__}} hair
+```
+This will use the contents of `comfyui/models/wildcards/hair_color.txt` and `hair_style.txt`.
+
+Assuming the files are
+```
 blonde
 red
 brown
-
+```
 and
-
+```
 long
 short
 pixie
 mohawk
+```
+you will have 12 combinations. Set ComfyUI to generate 12 images and you will see all combinations.
 
-you will have 12 combinations. Set comfyui to generate 12 images and you will
-see all combinations
+A wildcard reference to `__hair__hairstyles__` will use the file `models/wildcards/hair/hairstyles.txt` (or .json).
 
-json wildcard files
-instead of text you can use a json file. For example  seasons.json
- simple --   { "doesnotmatter" : ["summer","winter","fall","spring" ] } 
- weighted --   { "whatever" : [ { "summer" : 6 } ,  { "spring" : 4 } ,  
-          {"fall" : 3 } ,  { "winter" : 1 }  ] }
-weighted is only relevant to {} random selection, with random the odds of 
-getting  a choice are weight/total weights. so for summer odds are 6 out of 14.
-for {{}} sequential you will get all 4 seasons.
+#### JSON wildcard files
+Instead of text you can use a JSON file. For example `seasons.json`:
 
-A wildcard reference to __hair__hairstyles__ , will use the file models/wildcards/hair/hairstyles.txt ( or .json )
-
-
-Advanced:
-there is an optional dynaprompt output that can connect to a node that understands how to utiltize it to extract the dynamic prompt and the computed prompt.   see the gadzoinks custom node as an example .
-Note: Dynaprompts don't seem to be used much so ignore this.
-
-TODO:
- need to add support for wildcard files that include other wildcard files
+Simple:
+```json
+{ "doesnotmatter": ["summer", "winter", "fall", "spring"] }
 ```
 
+Weighted:
+```json
+{ "whatever": [ { "summer": 6 }, { "spring": 4 }, { "fall": 3 }, { "winter": 1 } ] }
+```
+
+Weights are only relevant to `{}` random selection. With random, the odds of getting a choice are weight / total weight, so for summer the odds are 6 out of 14.
+For `{{}}` sequential you will get all 4 seasons.
+
+
+### TODO
+- Add support for wildcard files that include other wildcard files.
+
+---
 
 # String Formatter
 
 ## Description
-Builds an output strng from supplied inputs and from system variables.
-for example if use connect prompt (or computed_prompt) to A and seed to B, then the format string "generating $a with seed $b on $hostname" you will generate a string a like "generating a smiling cat with seed 12345 on hal2000"
+Builds an output string from supplied inputs and from system variables.
+For example, if you connect prompt (or computed_prompt) to A and seed to B, then the format string `generating $a with seed $b on $hostname` will generate a string like `generating a smiling cat with seed 12345 on hal2000`.
 
 ## 📝 System Variables Reference
 
@@ -166,39 +221,107 @@ This node provides access to various system variables that can be used in your w
 | `gpu_name` | GPU device name | `NVIDIA GeForce RTX 4090` |
 | `gpu_count` | Number of GPUs detected | `1` |
 
+---
+
 # Save Image With Notes
 
 ## Description
-This node modifies a copy of you workflow adding a notes node in the new workflow that is then saved inside the image.
-You can add your own text with 'notes' input
-or wire the  'computed_node' from Gprompts which creates a Note and saves the computed prompt in the exif json
+This node modifies a copy of your workflow, adding a Note node to the new workflow that is then saved inside the image.
+You can add your own text with the `notes` input,
+or wire `computed_prompt` from GPrompts, which creates a Note and saves the computed prompt in the image metadata.
 
-Note: This node uses the standard comfyui Save Image node to do the actual saving.
+Note: This node uses the standard ComfyUI Save Image node to do the actual saving.
 
-# Save Image To Immich Server
+---
+
+# Load Images From Folder
 
 ## Description
-Save image to an Immich server https://immich.app
-This node modifies a copy of you workflow adding a notes node in the new workflow that is then saved inside the image.
-You can add your own text with 'notes' input
-or wire the  'computed_node' from Gprompts which creates a Note and saves the computed prompt in the exif json
-Supports adding images to Albums, and adding tags.
+Loads images from a folder on the ComfyUI server. It can load a single image, step through the folder one image per run, or pick images at random.
 
-## Configuration
+It can also read the image metadata. If an image was saved with **Save Image With Notes** or **Save Image To Immich Server** with a computed prompt, the `prompt` output returns that prompt, so you can re-run or vary old generations.
+
+Supported file types: png, jpg, jpeg, bmp, tiff, webp. Files are sorted by path, and EXIF orientation is applied automatically.
+
+**Credit:** This node is forked from the Load Image Batch node in [WAS Node Suite](https://github.com/WASasquatch/was-node-suite-comfyui) by WASasquatch. Thanks for the original work.
+
+## Node Settings
+- **mode**:
+  - `single_image`: loads the image at `index`. If `index` is larger than the number of images, it wraps around.
+  - `incremental_image`: loads the next image each time the workflow runs, and goes back to the first image after the last one. The position resets when ComfyUI restarts.
+  - `random`: picks a random image based on `seed`.
+- **seed**: seed used by `random` mode.
+- **index**: image number to load in `single_image` mode (starts at 0).
+- **path**: folder to load images from.
+- **pattern**: filename pattern, default `*`. For example `*.png` for PNG files only, or `**/*` to include subfolders.
+- **allow_RGBA_output**: if `false`, images with transparency are converted to RGB.
+- **filename_text_extension**: if `true`, the `filename_text` output includes the file extension.
+- **load_exif**: if `true`, reads metadata from the image so the `prompt` output can be filled in.
+
+## Outputs
+- **image**: the loaded image.
+- **filename_text**: the file name.
+- **width** / **height**: image size in pixels.
+- **prompt**: the computed prompt stored in the image, or empty if there isn't one.
+
+---
+
+# Immich Nodes
+
+Save images, video, and audio to an Immich server: https://immich.app
+
+## Configuration (shared by all Immich nodes)
 Create an API Key in your Immich server.
 
-Install the node in Comfyui and go to Settings, in Settings look for the "Gadzoiks" section.
-Enter the "APi Key", the Hostname and Port.
-Save Image to Disk: if disabled, the image is deleted from the comfyui server file system after uploading to Immich.
-Default Album: Album to use if none specified in the Node
-Defaul Tags: These Tags are combined with tags in the Node.
+Install the node in ComfyUI and go to Settings. In Settings look for the **Gadzoinks** section.
+Enter the API Key, the Hostname, and the Port.
 
-Node Settings
-notes: takes a string and creates a Notes node that is added to the worksheet saved with the image. Often used with the String Formatter node.
-Computed Prompt: ignore will be probably be removed
-album: add image to album, will create album if it does not exist.
-save_also: if enabled image is saved as normal with Comfyui. If disabled image on Comfyui is deleted.
+- **Save to Disk**: if disabled, the file is deleted from the ComfyUI server file system after uploading to Immich.
+- **Default Album**: album to use if none is specified in the node.
+- **Default Tags**: these tags are combined with the tags in the node.
 
+Settings are remembered on the ComfyUI server, so saving keeps working after a restart or if the browser is disconnected.
 
+## Save Image To Immich Server
 
+### Description
+This node modifies a copy of your workflow, adding a Note node to the new workflow that is then saved inside the image.
+You can add your own text with the `notes` input,
+or wire `computed_prompt` from GPrompts, which creates a Note and saves the computed prompt in the image metadata.
+Supports adding images to albums, and adding tags.
 
+### Node Settings
+- **notes**: takes a string and creates a Note node that is added to the workflow saved with the image. Often used with the String Formatter node.
+- **computed_prompt**: ignore, will probably be removed.
+- **album**: add the image to this album. The album is created if it does not exist.
+- **tags**: comma separated tags, merged with the Default Tags from Settings.
+- **save_also**: if enabled, the image is saved as normal with ComfyUI. If disabled, the image on ComfyUI is deleted after upload.
+
+## Save Video To Immich Server
+
+### Description
+Saves a video generated in ComfyUI and uploads it to your Immich server.
+Uses the same Gadzoinks settings as the image node, and supports albums, tags, and optionally keeping a copy on the ComfyUI server.
+
+## Save Audio To Immich Server
+
+### Description
+Saves audio generated in ComfyUI and uploads it to your Immich server.
+
+Immich only handles photos and videos, so it does not support audio files such as mp3. To get around this, the audio is saved as an **mp4 video with a still cover image**, which Immich can store and play.
+
+- **Cover image**: optionally connect your own image to use as the cover. If no image is connected, a default cover is used.
+- Supports albums, tags, and optionally keeping a copy on the ComfyUI server, the same as the image node.
+
+### Requirement: ffmpeg
+**ffmpeg must be installed** and available on the system PATH of the machine running ComfyUI, or this node will not work.
+
+- Windows: `winget install ffmpeg`
+- macOS: `brew install ffmpeg`
+- Ubuntu/Debian: `sudo apt install ffmpeg`
+
+You can check that it is installed by running `ffmpeg -version` in a terminal.
+
+** Immich support **
+All of these nodes work with standard Immich, but I have my own fork of Immich with extra features such as the ability to see the prompt and metadata of an Image, and the ability to search for text in a prompt ( find all images of dragons )
+The installation is still rough, https://github.com/neal3000/immich_gadzoinks/tree/immich_gadzoinks

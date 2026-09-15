@@ -8,13 +8,20 @@ Dynamic Prompts extension for ComfyUI
 Allows for random and sequential substitutions in prompts
 """
 import sys, os
-from .comfyui_gprompts import NODE_CLASS_MAPPINGS, GPrompts
+from .comfyui_gprompts import NODE_CLASS_MAPPINGS, NODE_DISPLAY_NAME_MAPPINGS, GPrompts
+from .v3_nodes import V3NODES, V3NODE_DISPLAY_NAME_MAPPINGS
+
+# Merge V3 nodes into the V1 registration path
+# (V3 io.ComfyNode classes are backwards-compatible with NODE_CLASS_MAPPINGS)
+NODE_CLASS_MAPPINGS = {**NODE_CLASS_MAPPINGS, **V3NODES}
+NODE_DISPLAY_NAME_MAPPINGS = {**NODE_DISPLAY_NAME_MAPPINGS, **V3NODE_DISPLAY_NAME_MAPPINGS}
+
 module_root_directory = os.path.dirname(os.path.realpath(__file__))
 module_js_directory = os.path.join(module_root_directory, "js")
-
 WEB_DIRECTORY = "./web/js"
 
-__all__ = ['NODE_CLASS_MAPPINGS',"WEB_DIRECTORY"]
+__all__ = ['NODE_CLASS_MAPPINGS', 'NODE_DISPLAY_NAME_MAPPINGS', 'WEB_DIRECTORY']
 
 print(f"Dynamic Prompts for ComfyUI loaded: {list(NODE_CLASS_MAPPINGS.keys())}")
+
 
