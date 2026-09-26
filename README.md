@@ -5,6 +5,7 @@ This package provides custom nodes for ComfyUI that enhance prompt generation, s
 
 ## Nodes Overview
 - **GPrompts** - Create dynamic prompts with random or sequential selection. Also supports wildcard files.
+- **Dynamic Prompts with Enhancer** + **Prompt Enhancer Loader (GGUF / API)** - GPrompts plus an LLM prompt enhancer (e.g. the Qwen-Image-2.1 prompt rewriter), local GGUF or any Ollama/OpenAI-compatible/Anthropic API, with one LLM call per batch.
 - **String Formatter** - Build custom output strings from multiple inputs and system variables.
 - **Save Image With Notes** - Save images with embedded workflow notes and metadata.
 - **Load Images From Folder** - Load images from a folder one at a time, in order, or randomly, and read back the prompt they were created with.
@@ -139,6 +140,110 @@ For `{{}}` sequential you will get all 4 seasons.
 
 ### TODO
 - Add support for wildcard files that include other wildcard files.
+
+---
+
+## Dynamic Prompts with Enhancer
+
+### Description
+Same dynamic prompt syntax as GPrompts, plus an LLM that rewrites the prompt into the long, detailed
+form image models like Qwen-Image 2.1 work best with.
+
+Only the **first** expansion goes to the LLM. For every later run the node swaps that run's chosen
+values into the LLM's rewrite in place of the first run's values, so a whole batch costs one LLM
+call. Example: `a {{tiki bar|beach hut}} with {red|amber} lanterns` is rewritten once as
+"Cinematic photo of a tiki bar with amber lanterns at dusk", and the next run becomes
+"Cinematic photo of a beach hut with red lanterns at dusk".
+
+With **preserve_dynamic_words** on (the default) the LLM is asked to keep those words verbatim. If it
+rewords one anyway ("cat" becomes "kitten"), that variation can't be swapped in; the console says so
+and that run keeps the first run's value. Changing the text, delimiter style, seed or any enhancer
+setting starts over with a new LLM call.
+
+### Outputs
+- `text` / `computed_prompt` - the final prompt for this run
+- `dynamic_prompt` - this run's expansion before enhancement
+- `seed`
+- `template` - the prompt exactly as typed, dynamic blocks and all
+- `wh_ratio` - aspect ratio recommended by the LLM (e.g. `16:9`), empty if none
+- `width` / `height` - an image size at `wh_ratio` (1:1 if none) with about `target_megapixels`
+  pixels (1.0 = 1024x1024-sized, 4.0 = Qwen-Image 2.1's native 2K), sides rounded to multiples of 16.
+  Wire them into an Empty Latent Image for text-to-image.
+- `resolution` - the side of a square with about `target_megapixels` pixels (multiple of 32;
+  1.0 = 1024), for the `resolution` input of Text Encode Qwen Image 2.1 in edit workflows. For
+  text-to-image, don't use that node's latent output: it is always square. Use width/height into
+  an Empty Latent Image instead; the encode node's `resolution` then has no effect.
+
+### Prompt Enhancer Loader (GGUF)
+Put the `.gguf` model and its system prompt file (`.txt` or `.md`) in `ComfyUI/models/LLM/`
+(subfolders are fine), then pick them on the node. The model loads the first time a prompt is
+enhanced; turn `keep_loaded` off to free its VRAM after each use, or set `gpu_layers` to 0 to run it
+on the CPU and leave the GPU to the image model.
+
+For the Qwen-Image-2.1 prompt rewriters, use the `system_prompt.txt` that ships with the model; they
+produce nothing useful without it. Keep `enable_thinking` on, and use `presence_penalty` ~1.5 for the
+text-to-image rewriter.
+
+### Requirements
+The loader runs the model in-process with the `llama_cpp` package
+([llama-cpp-python](https://pypi.org/project/llama-cpp-python/)), the same way
+[ComfyUI-Prompt-Enhancer](https://github.com/xiaowuapple-pixel/ComfyUI-Prompt-Enhancer) does. It is
+optional and not installed automatically (see `requirements-local-gguf.txt`), because it has to match
+your CUDA version. Install it into ComfyUI's own Python.
+
+Easiest, no compiling: download the prebuilt CUDA wheel for your CUDA and Python version from
+[JamePeng/llama-cpp-python releases](https://github.com/JamePeng/llama-cpp-python/releases)
+(the file name carries both, e.g. `+cu128` and `cp312`) and `python -m pip install` the `.whl`.
+Or build it yourself:
+
+```
+CMAKE_ARGS="-DGGML_CUDA=on" python -m pip install -U llama-cpp-python --no-cache-dir
+```
+
+Qwen3.5-based models, including the Qwen-Image-2.1 prompt rewriters, need llama-cpp-python 0.3.35+
+(PyPI) or the JamePeng fork 0.3.47+.
+
+### Thinking and plan_tokens
+With `enable_thinking` on, the model plans before it answers. That plan is where the time goes, so
+`plan_tokens` caps it: when the plan reaches that length it is handed back to the model, closed, and
+the model writes the answer from it. -1 removes the cap (slowest, most detail). With thinking off the
+answer is written directly (fastest, shallower prompts).
+
+### Prompt Enhancer Loader (API)
+The same enhancer, but the LLM runs behind an HTTP API: a local or LAN server (Ollama,
+llama-server, vLLM, SGLang, LM Studio) or a hosted one (OpenAI, OpenRouter, DashScope, Anthropic, or
+anything OpenAI-compatible). Running the LLM on another machine leaves all your GPU memory to the
+image model. No extra Python packages are needed.
+
+Pick the request style with `api`:
+
+| api | endpoint | use it for |
+|---|---|---|
+| OpenAI-compatible chat | `/chat/completions` | almost everything |
+| OpenAI-compatible completions (raw prompt) | `/completions` | Qwen-family models on vLLM, SGLang, llama-server, LM Studio |
+| Ollama chat | `/api/chat` | any Ollama model |
+| Ollama generate (raw prompt) | `/api/generate` | Qwen-family models on Ollama |
+| Anthropic messages | `/v1/messages` | Claude |
+
+The two **raw prompt** styles send exactly the prompt the GGUF loader builds (think prefill,
+`plan_tokens`, early stop), so a Qwen-Image prompt rewriter behaves the same as it does locally. Chat
+styles let the server apply the model's own template; thinking is switched on or off with whatever
+field the server understands (`thinking_field`, auto-detected by default).
+
+Servers differ in which parameters they accept. If a request is rejected because of a parameter
+(`top_k`, `min_p`, `seed`, `max_tokens`, a thinking field...), the node drops or renames it, retries,
+and remembers that for the server and model. `extra_json` adds anything provider-specific to the
+request body.
+
+**API keys** go in Settings > Gadzoinks > LLM, never on the node (node values are saved into
+workflows and image metadata):
+- *LLM API key (default)* - used when `api_key_name` is blank. Leave it empty for local servers.
+- *LLM API keys, named* - `openrouter=sk-or-...; dashscope=sk-...`; select one with
+  `api_key_name` (e.g. `openrouter`).
+- `api_key_name` also accepts `env:VARIABLE` (read an environment variable) and `none`.
+
+For Ollama, set `context_length` (Ollama's small default context silently truncates the 10 KB
+Qwen-Image system prompt) and use `keep_alive` = `0` to unload the model right after each call.
 
 ---
 

@@ -12,7 +12,7 @@ from comfy_api.latest import io
 from comfy_extras.nodes_video import SaveVideo
 from comfy_extras.nodes_audio import SaveAudioAdvanced
 from .immich_importer import ImmichImporter
-from .comfyui_gprompts import get_last_prompt,parse_bool_setting,add_note_node_to_workflow,extract_computed_prompt,get_missing,get_immich_settings,get_settings_file,apply_settings,dprint
+from .comfyui_gprompts import get_last_prompt,parse_bool_setting,add_note_node_to_workflow,extract_computed_prompt,get_missing,get_immich_settings,get_settings_file,apply_settings,dprint,masked_settings
 from  .common import  pil_to_comfy, cover_from_tensor, fallback_cover,fallback_cover_os
 #
 #
@@ -166,7 +166,7 @@ class GSaveAudioToImmich(SaveAudioAdvanced):
             print("\nIMMICH CONFIGURATION ERROR")
             print(f"Save Image to Immich Server Node Missing: {', '.join(missing)}")
             print("Please configure in Settings:Gadzoinks")
-            print(f"settings snapshot:{settings}")
+            print(f"settings snapshot:{masked_settings(settings)}")
             # Generate an error so the user gets alerted to what is wrong
             error_msg = f": Missing {', '.join(missing)}. Open Settings, Gadzoinks to configure."
             raise ValueError(error_msg)
@@ -330,7 +330,7 @@ class GSaveVideoToImmich(SaveVideo):
             print("\nIMMICH CONFIGURATION ERROR")
             print(f"Save Image to Immich Server Node Missing: {', '.join(missing)}")
             print("Please configure in Settings:Gadzoinks")
-            print(f"settings snapshot:{settings}")
+            print(f"settings snapshot:{masked_settings(settings)}")
             # Generate an error so the user gets alerted to what is wrong
             error_msg = f": Missing {', '.join(missing)}. Open Settings, Gadzoinks to configure."
             raise ValueError(error_msg)
