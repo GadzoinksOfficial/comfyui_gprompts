@@ -1,0 +1,1716 @@
+{
+  "id": "54bb395d-3e60-4c94-b525-85523901575b",
+  "revision": 0,
+  "last_node_id": 505,
+  "last_link_id": 746,
+  "nodes": [
+    {
+      "id": 463,
+      "type": "MarkdownNote",
+      "pos": [
+        -350,
+        2470
+      ],
+      "size": [
+        420,
+        620
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "Note: Model links",
+      "properties": {},
+      "widgets_values": [
+        "Guide: [Subgraph](https://docs.comfy.org/interface/features/subgraph)\n\n## Model Links\n\n- [Hugging Face:Comfy-Org/Qwen-Image-2.1](https://huggingface.co/Comfy-Org/Qwen-Image-2.1)\n- [ModelScope:Comfy-Org/Qwen-Image-2.1](https://modelscope.cn/models/Comfy-Org/Qwen-Image-2.1)\n\n**diffusion_models**\n\n- [qwen_image_2.1_bf16.safetensors](https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/diffusion_models/qwen_image_2.1_bf16.safetensors)\n- [qwen_image_2.1_int8_convrot.safetensors](https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/diffusion_models/qwen_image_2.1_int8_convrot.safetensors)\n\n**text_encoders**\n\n- [qwen3vl_8b_bf16.safetensors](https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/text_encoders/qwen3vl_8b_bf16.safetensors)\n- [qwen3vl_8b_int8_convrot.safetensors](https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/text_encoders/qwen3vl_8b_int8_convrot.safetensors) \n\n**vae**\n\n- [qwen_image_2.1_vae_bf16.safetensors](https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/vae/qwen_image_2.1_vae_bf16.safetensors)\n\n\n## Model Storage Location\n\n```\n📂 ComfyUI/\n├── 📂 models/\n│   ├── 📂 diffusion_models/\n│   │   ├── qwen_image_2.1_bf16.safetensors\n│   │   └── qwen_image_2.1_int8_convrot.safetensors\n│   ├── 📂 text_encoders/\n│   │   ├── qwen3vl_8b_bf16.safetensors\n│   │   └── qwen3vl_8b_int8_convrot.safetensors\n│   └── 📂 vae/\n│       └── qwen_image_2.1_vae_bf16.safetensors\n```\n\n## Report Issue\n\nNote: Please update ComfyUI first ([guide](https://docs.comfy.org/installation/update_comfyui)) and prepare required models. Desktop/Cloud updates follow stable releases, so some nightly-supported models may not be available yet.\n\n- Cannot run / runtime errors: [ComfyUI/issues](https://github.com/comfyanonymous/ComfyUI/issues)\n- UI / frontend issues: [ComfyUI_frontend/issues](https://github.com/Comfy-Org/ComfyUI_frontend/issues)\n- Workflow issues: [workflow_templates/issues](https://github.com/Comfy-Org/workflow_templates/issues)\n"
+      ],
+      "widgets_values_named": {
+        "text": "Guide: [Subgraph](https://docs.comfy.org/interface/features/subgraph)\n\n## Model Links\n\n- [Hugging Face:Comfy-Org/Qwen-Image-2.1](https://huggingface.co/Comfy-Org/Qwen-Image-2.1)\n- [ModelScope:Comfy-Org/Qwen-Image-2.1](https://modelscope.cn/models/Comfy-Org/Qwen-Image-2.1)\n\n**diffusion_models**\n\n- [qwen_image_2.1_bf16.safetensors](https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/diffusion_models/qwen_image_2.1_bf16.safetensors)\n- [qwen_image_2.1_int8_convrot.safetensors](https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/diffusion_models/qwen_image_2.1_int8_convrot.safetensors)\n\n**text_encoders**\n\n- [qwen3vl_8b_bf16.safetensors](https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/text_encoders/qwen3vl_8b_bf16.safetensors)\n- [qwen3vl_8b_int8_convrot.safetensors](https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/text_encoders/qwen3vl_8b_int8_convrot.safetensors) \n\n**vae**\n\n- [qwen_image_2.1_vae_bf16.safetensors](https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/vae/qwen_image_2.1_vae_bf16.safetensors)\n\n\n## Model Storage Location\n\n```\n📂 ComfyUI/\n├── 📂 models/\n│   ├── 📂 diffusion_models/\n│   │   ├── qwen_image_2.1_bf16.safetensors\n│   │   └── qwen_image_2.1_int8_convrot.safetensors\n│   ├── 📂 text_encoders/\n│   │   ├── qwen3vl_8b_bf16.safetensors\n│   │   └── qwen3vl_8b_int8_convrot.safetensors\n│   └── 📂 vae/\n│       └── qwen_image_2.1_vae_bf16.safetensors\n```\n\n## Report Issue\n\nNote: Please update ComfyUI first ([guide](https://docs.comfy.org/installation/update_comfyui)) and prepare required models. Desktop/Cloud updates follow stable releases, so some nightly-supported models may not be available yet.\n\n- Cannot run / runtime errors: [ComfyUI/issues](https://github.com/comfyanonymous/ComfyUI/issues)\n- UI / frontend issues: [ComfyUI_frontend/issues](https://github.com/Comfy-Org/ComfyUI_frontend/issues)\n- Workflow issues: [workflow_templates/issues](https://github.com/Comfy-Org/workflow_templates/issues)\n"
+      },
+      "color": "#222",
+      "bgcolor": "#000"
+    },
+    {
+      "id": 468,
+      "type": "MarkdownNote",
+      "pos": [
+        -182.48788749836086,
+        2176.4795124736784
+      ],
+      "size": [
+        420,
+        220
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "Note: Usage",
+      "properties": {},
+      "widgets_values": [
+        "## Size\nQwen Image 2.1 has native 2K (2048*2048) support for direct output.\n\nOutput size comes from ResolutionSelector (width/height). Default is 1 megapixel (1024*1024). For native 2K, set 1:1 and 4 megapixels (2048*2048). Prefer multiples of 32.\n\n## Transparent Image\n\nTo generate a transparent image, wrap the prompt like this and replace the middle with the subject:\n\n---\nThis is an RGBA format image with transparency. `[your description]`. The image has an alpha channel and a transparent background.\n\n---\nSave as PNG to keep the alpha channel.\n\n## Parameters\n\n- prompt: what to generate. For RGBA, see Note: transparent.\n- negative_prompt: unused while cfg is 1.\n- cfg: keep 1 for the Qwen Image 2.1 official path. Raise it only if you use a negative prompt.\n- steps: Qwen Image 2.1 official  pipeline uses about 40-50 with euler. This template starts at 25. More advanced samplers need fewer steps.\n"
+      ],
+      "widgets_values_named": {
+        "text": "## Size\nQwen Image 2.1 has native 2K (2048*2048) support for direct output.\n\nOutput size comes from ResolutionSelector (width/height). Default is 1 megapixel (1024*1024). For native 2K, set 1:1 and 4 megapixels (2048*2048). Prefer multiples of 32.\n\n## Transparent Image\n\nTo generate a transparent image, wrap the prompt like this and replace the middle with the subject:\n\n---\nThis is an RGBA format image with transparency. `[your description]`. The image has an alpha channel and a transparent background.\n\n---\nSave as PNG to keep the alpha channel.\n\n## Parameters\n\n- prompt: what to generate. For RGBA, see Note: transparent.\n- negative_prompt: unused while cfg is 1.\n- cfg: keep 1 for the Qwen Image 2.1 official path. Raise it only if you use a negative prompt.\n- steps: Qwen Image 2.1 official  pipeline uses about 40-50 with euler. This template starts at 25. More advanced samplers need fewer steps.\n"
+      },
+      "color": "#222",
+      "bgcolor": "#000"
+    },
+    {
+      "id": 471,
+      "type": "StringFormatter",
+      "pos": [
+        1423.1703838047472,
+        1709.133900659494
+      ],
+      "size": [
+        452.9671955763115,
+        453.2528084712444
+      ],
+      "flags": {},
+      "order": 19,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "a",
+          "shape": 7,
+          "type": "*",
+          "link": 724
+        },
+        {
+          "name": "b",
+          "shape": 7,
+          "type": "*",
+          "link": 738
+        },
+        {
+          "name": "c",
+          "shape": 7,
+          "type": "*",
+          "link": 730
+        },
+        {
+          "name": "d",
+          "shape": 7,
+          "type": "*",
+          "link": 731
+        },
+        {
+          "name": "e",
+          "shape": 7,
+          "type": "*",
+          "link": 726
+        },
+        {
+          "name": "f",
+          "shape": 7,
+          "type": "*",
+          "link": 722
+        },
+        {
+          "name": "g",
+          "shape": 7,
+          "type": "*",
+          "link": 734
+        },
+        {
+          "name": "h",
+          "shape": 7,
+          "type": "*",
+          "link": 737
+        }
+      ],
+      "outputs": [
+        {
+          "name": "formatted_string",
+          "type": "STRING",
+          "links": [
+            686
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "StringFormatter"
+      },
+      "widgets_values": [
+        "The text  is \n$a\n\ntemplate\n$f\n\ndynamic is \n$b\n\ncomputed is\n$e\n\n\nthe seed is $h, width is $c, height is $d. Generated at $datetime on $hostname, Operating system $os"
+      ],
+      "widgets_values_named": {
+        "format_string": "The text  is \n$a\n\ntemplate\n$f\n\ndynamic is \n$b\n\ncomputed is\n$e\n\n\nthe seed is $h, width is $c, height is $d. Generated at $datetime on $hostname, Operating system $os"
+      }
+    },
+    {
+      "id": 472,
+      "type": "GImageSaveImmich",
+      "pos": [
+        1899.2534068973277,
+        1738.8967294016466
+      ],
+      "size": [
+        1068.8667156564093,
+        599.2472971401053
+      ],
+      "flags": {},
+      "order": 26,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 701
+        },
+        {
+          "name": "notes",
+          "shape": 7,
+          "type": "*",
+          "link": 686
+        },
+        {
+          "name": "computed_prompt",
+          "shape": 7,
+          "type": "*",
+          "link": null
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "GImageSaveImmich"
+      },
+      "widgets_values": [
+        "test",
+        "test",
+        "",
+        true
+      ],
+      "widgets_values_named": {
+        "filename_prefix": "test",
+        "album": "test",
+        "tags": "",
+        "save_also": true
+      }
+    },
+    {
+      "id": 475,
+      "type": "UpscaleModelLoader",
+      "pos": [
+        1880.7060788060935,
+        2555.1390722652586
+      ],
+      "size": [
+        315,
+        58
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 4,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "UPSCALE_MODEL",
+          "type": "UPSCALE_MODEL",
+          "slot_index": 0,
+          "links": [
+            694
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "UpscaleModelLoader"
+      },
+      "widgets_values": [
+        "4x-UltraSharpV2.safetensors"
+      ],
+      "widgets_values_named": {
+        "model_name": "4x-UltraSharpV2.safetensors"
+      }
+    },
+    {
+      "id": 476,
+      "type": "ImageUpscaleWithModel",
+      "pos": [
+        2257.493137928501,
+        2578.573291122197
+      ],
+      "size": [
+        340.20001220703125,
+        46
+      ],
+      "flags": {},
+      "order": 25,
+      "mode": 4,
+      "inputs": [
+        {
+          "name": "upscale_model",
+          "type": "UPSCALE_MODEL",
+          "link": 694
+        },
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 699
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "slot_index": 0,
+          "links": [
+            701
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageUpscaleWithModel"
+      }
+    },
+    {
+      "id": 479,
+      "type": "SplitImageWithAlpha",
+      "pos": [
+        1956.6350642308573,
+        2687.1580039531596
+      ],
+      "size": [
+        186.7291015625,
+        46
+      ],
+      "flags": {},
+      "order": 24,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 704
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            699
+          ]
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "SplitImageWithAlpha"
+      }
+    },
+    {
+      "id": 480,
+      "type": "UNETLoader",
+      "pos": [
+        112.80328082837445,
+        2627.9112385055937
+      ],
+      "size": [
+        510,
+        90
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            739
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "UNETLoader",
+        "models": [
+          {
+            "name": "qwen_image_2.1_int8_convrot.safetensors",
+            "url": "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/diffusion_models/qwen_image_2.1_int8_convrot.safetensors",
+            "directory": "diffusion_models"
+          }
+        ]
+      },
+      "widgets_values": [
+        "qwen_image_2.1_int8_convrot.safetensors",
+        "default"
+      ],
+      "widgets_values_named": {
+        "unet_name": "qwen_image_2.1_int8_convrot.safetensors",
+        "weight_dtype": "default"
+      }
+    },
+    {
+      "id": 481,
+      "type": "TextEncodeQwenImage21",
+      "pos": [
+        717.2645586055157,
+        2628.91417087215
+      ],
+      "size": [
+        530,
+        680
+      ],
+      "flags": {},
+      "order": 21,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 718
+        },
+        {
+          "name": "images.image_1",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": 745
+        },
+        {
+          "name": "images.image_2",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "name": "images.image_3",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "name": "images.image_4",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "name": "vae",
+          "shape": 7,
+          "type": "VAE",
+          "link": 729
+        },
+        {
+          "name": "prompt",
+          "type": "STRING",
+          "widget": {
+            "name": "prompt"
+          },
+          "link": 728
+        },
+        {
+          "label": "resolution",
+          "name": "resolution",
+          "type": "INT",
+          "widget": {
+            "name": "resolution"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "links": [
+            706
+          ]
+        },
+        {
+          "name": "negative",
+          "type": "CONDITIONING",
+          "links": [
+            708
+          ]
+        },
+        {
+          "name": "latent",
+          "type": "LATENT",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "TextEncodeQwenImage21"
+      },
+      "widgets_values": [
+        "",
+        "",
+        512
+      ],
+      "widgets_values_named": {
+        "prompt": "",
+        "negative_prompt": "",
+        "resolution": 512
+      }
+    },
+    {
+      "id": 482,
+      "type": "CLIPLoader",
+      "pos": [
+        112.80328082837445,
+        2787.9112385055937
+      ],
+      "size": [
+        510,
+        120
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [
+            740
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CLIPLoader",
+        "models": [
+          {
+            "name": "qwen3vl_8b_int8_convrot.safetensors",
+            "url": "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/text_encoders/qwen3vl_8b_int8_convrot.safetensors",
+            "directory": "text_encoders"
+          }
+        ]
+      },
+      "widgets_values": [
+        "qwen3vl_8b_int8_convrot.safetensors",
+        "qwen_image",
+        "default"
+      ],
+      "widgets_values_named": {
+        "clip_name": "qwen3vl_8b_int8_convrot.safetensors",
+        "type": "qwen_image",
+        "device": "default"
+      }
+    },
+    {
+      "id": 483,
+      "type": "VAELoader",
+      "pos": [
+        112.80328082837445,
+        2987.9112385055937
+      ],
+      "size": [
+        510,
+        70
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "links": [
+            703,
+            729
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAELoader",
+        "models": [
+          {
+            "name": "qwen_image_2.1_vae_bf16.safetensors",
+            "url": "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/vae/qwen_image_2.1_vae_bf16.safetensors",
+            "directory": "vae"
+          }
+        ]
+      },
+      "widgets_values": [
+        "qwen_image_2.1_vae_bf16.safetensors"
+      ],
+      "widgets_values_named": {
+        "vae_name": "qwen_image_2.1_vae_bf16.safetensors"
+      }
+    },
+    {
+      "id": 484,
+      "type": "EmptyLatentImage",
+      "pos": [
+        1369.1457118229312,
+        2278.5156572874084
+      ],
+      "size": [
+        300,
+        120
+      ],
+      "flags": {},
+      "order": 20,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "width",
+          "type": "INT",
+          "widget": {
+            "name": "width"
+          },
+          "link": 732
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "widget": {
+            "name": "height"
+          },
+          "link": 733
+        }
+      ],
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            707
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "EmptyLatentImage"
+      },
+      "widgets_values": [
+        1024,
+        1024,
+        1
+      ],
+      "widgets_values_named": {
+        "width": 1024,
+        "height": 1024,
+        "batch_size": 1
+      }
+    },
+    {
+      "id": 485,
+      "type": "VAEDecode",
+      "pos": [
+        1922.8032808283745,
+        2877.9112385055937
+      ],
+      "size": [
+        230,
+        60
+      ],
+      "flags": {},
+      "order": 23,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 705
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 703
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            704
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAEDecode"
+      }
+    },
+    {
+      "id": 486,
+      "type": "KSampler",
+      "pos": [
+        1482.8032808283745,
+        2857.9112385055937
+      ],
+      "size": [
+        270,
+        270
+      ],
+      "flags": {},
+      "order": 22,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 715
+        },
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "link": 706
+        },
+        {
+          "name": "negative",
+          "type": "CONDITIONING",
+          "link": 708
+        },
+        {
+          "name": "latent_image",
+          "type": "LATENT",
+          "link": 707
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "widget": {
+            "name": "seed"
+          },
+          "link": 736
+        }
+      ],
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            705
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "KSampler"
+      },
+      "widgets_values": [
+        0,
+        "fixed",
+        40,
+        3,
+        "euler",
+        "simple",
+        1
+      ],
+      "widgets_values_named": {
+        "seed": 0,
+        "control_after_generate": "fixed",
+        "steps": 40,
+        "cfg": 3,
+        "sampler_name": "euler",
+        "scheduler": "simple",
+        "denoise": 1
+      }
+    },
+    {
+      "id": 488,
+      "type": "Reroute",
+      "pos": [
+        1344.1850806582027,
+        2467.291340169158
+      ],
+      "size": [
+        75,
+        26
+      ],
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "",
+          "type": "*",
+          "link": 739
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "MODEL",
+          "links": [
+            715
+          ]
+        }
+      ],
+      "properties": {
+        "showOutputText": false,
+        "horizontal": false
+      }
+    },
+    {
+      "id": 489,
+      "type": "Reroute",
+      "pos": [
+        620.915012605738,
+        2471.944545128434
+      ],
+      "size": [
+        75,
+        26
+      ],
+      "flags": {},
+      "order": 14,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "",
+          "type": "*",
+          "link": 740
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "CLIP",
+          "links": [
+            718
+          ]
+        }
+      ],
+      "properties": {
+        "showOutputText": false,
+        "horizontal": false
+      }
+    },
+    {
+      "id": 491,
+      "type": "GPromptEnhancerLoaderGGUF",
+      "pos": [
+        -400.1102846831002,
+        1772.6065436305146
+      ],
+      "size": [
+        318.13046875,
+        346
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 4,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "enhancer",
+          "type": "GPROMPT_ENHANCER",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "GPromptEnhancerLoaderGGUF"
+      },
+      "widgets_values": [
+        "pe_t2i_heretic-Q6_K.gguf",
+        "system_prompt.txt",
+        16384,
+        8192,
+        -1,
+        1,
+        0.95,
+        20,
+        1.5,
+        true,
+        800,
+        true,
+        true
+      ],
+      "widgets_values_named": {
+        "model": "pe_t2i_heretic-Q6_K.gguf",
+        "system_prompt": "system_prompt.txt",
+        "context_length": 16384,
+        "max_new_tokens": 8192,
+        "gpu_layers": -1,
+        "temperature": 1,
+        "top_p": 0.95,
+        "top_k": 20,
+        "presence_penalty": 1.5,
+        "enable_thinking": true,
+        "plan_tokens": 800,
+        "keep_loaded": true,
+        "flash_attn": true
+      }
+    },
+    {
+      "id": 492,
+      "type": "GPromptsEnhanced",
+      "pos": [
+        362.9485399919879,
+        1727.7073557249685
+      ],
+      "size": [
+        956.692604575846,
+        513.8084794339691
+      ],
+      "flags": {},
+      "order": 16,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "enhancer",
+          "type": "GPROMPT_ENHANCER",
+          "link": 746
+        },
+        {
+          "name": "images.image_1",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": 743
+        },
+        {
+          "name": "images.image_2",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "links": [
+            724,
+            727
+          ]
+        },
+        {
+          "name": "dynamic_prompt",
+          "type": "STRING",
+          "links": [
+            734,
+            738
+          ]
+        },
+        {
+          "name": "computed_prompt",
+          "type": "STRING",
+          "links": [
+            726
+          ]
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "links": [
+            735,
+            737
+          ]
+        },
+        {
+          "name": "template",
+          "type": "STRING",
+          "links": [
+            722
+          ]
+        },
+        {
+          "name": "wh_ratio",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "name": "width",
+          "type": "INT",
+          "links": [
+            730,
+            732
+          ]
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "links": [
+            731,
+            733
+          ]
+        },
+        {
+          "name": "resolution",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "name": "ratio_follow",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "GPromptsEnhanced",
+        "_meta": {
+          "computed_result": "Add a large, realistic dinosaur positioned in the background behind the two women on the beach, partially visible between them and the ocean horizon. The dinosaur should be clearly recognizable as a major compositional element, rendered with photorealistic detail and proportionate scale to create visual depth. Preserve the two women, their poses, facial expressions, clothing, drinks, and all foreground beach elements including the tiki bar structure, ocean, sky, and beach sand exactly as they appear in the input image. The dinosaur addition should integrate naturally into the scene lighting and perspective without disrupting the overall composition or the clarity of the figures in the foreground.",
+          "computed_prompt": "Add a large, realistic dinosaur positioned in the background behind the two women on the beach, partially visible between them and the ocean horizon. The dinosaur should be clearly recognizable as a major compositional element, rendered with photorealistic detail and proportionate scale to create visual depth. Preserve the two women, their poses, facial expressions, clothing, drinks, and all foreground beach elements including the tiki bar structure, ocean, sky, and beach sand exactly as they appear in the input image. The dinosaur addition should integrate naturally into the scene lighting and perspective without disrupting the overall composition or the clarity of the figures in the foreground."
+        }
+      },
+      "widgets_values": [
+        "add a {{pack of flying sharks | kaiju | octopus | dinosaur}} behind the image of the two  women.  Make the image suitable for use in a 16:9 movie later on.",
+        "curly { }",
+        595269586112479,
+        "randomize",
+        true,
+        "0.5",
+        "every run",
+        "off",
+        "Add a large, realistic dinosaur positioned in the background behind the two women on the beach, partially visible between them and the ocean horizon. The dinosaur should be clearly recognizable as a major compositional element, rendered with photorealistic detail and proportionate scale to create visual depth. Preserve the two women, their poses, facial expressions, clothing, drinks, and all foreground beach elements including the tiki bar structure, ocean, sky, and beach sand exactly as they appear in the input image. The dinosaur addition should integrate naturally into the scene lighting and perspective without disrupting the overall composition or the clarity of the figures in the foreground."
+      ],
+      "widgets_values_named": {
+        "text": "add a {{pack of flying sharks | kaiju | octopus | dinosaur}} behind the image of the two  women.  Make the image suitable for use in a 16:9 movie later on.",
+        "delimiter_style": "curly { }",
+        "seed": 595269586112479,
+        "control_after_generate": "randomize",
+        "preserve_dynamic_words": true,
+        "target_megapixels": "0.5",
+        "enhance": "every run",
+        "prefetch_next": "off",
+        "computed_prompt": "Add a large, realistic dinosaur positioned in the background behind the two women on the beach, partially visible between them and the ocean horizon. The dinosaur should be clearly recognizable as a major compositional element, rendered with photorealistic detail and proportionate scale to create visual depth. Preserve the two women, their poses, facial expressions, clothing, drinks, and all foreground beach elements including the tiki bar structure, ocean, sky, and beach sand exactly as they appear in the input image. The dinosaur addition should integrate naturally into the scene lighting and perspective without disrupting the overall composition or the clarity of the figures in the foreground."
+      }
+    },
+    {
+      "id": 493,
+      "type": "Reroute",
+      "pos": [
+        656.5033142298671,
+        2354.7707882560053
+      ],
+      "size": [
+        75,
+        26
+      ],
+      "flags": {},
+      "order": 17,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "",
+          "type": "*",
+          "widget": {
+            "name": "value"
+          },
+          "link": 727
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "STRING",
+          "links": [
+            728
+          ]
+        }
+      ],
+      "properties": {
+        "showOutputText": false,
+        "horizontal": false
+      }
+    },
+    {
+      "id": 497,
+      "type": "Reroute",
+      "pos": [
+        1355.5502894128335,
+        2418.1734471050027
+      ],
+      "size": [
+        75,
+        26
+      ],
+      "flags": {},
+      "order": 18,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "",
+          "type": "*",
+          "widget": {
+            "name": "value"
+          },
+          "link": 735
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "INT",
+          "links": [
+            736
+          ]
+        }
+      ],
+      "properties": {
+        "showOutputText": false,
+        "horizontal": false
+      }
+    },
+    {
+      "id": 499,
+      "type": "GPromptEnhancerLoaderAPI",
+      "pos": [
+        -507.36675411372624,
+        1188.1424459492678
+      ],
+      "size": [
+        400,
+        496
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 4,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "enhancer",
+          "type": "GPROMPT_ENHANCER",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "GPromptEnhancerLoaderAPI"
+      },
+      "widgets_values": [
+        "OpenAI-compatible chat",
+        "http://example.local:11434",
+        "qwen-pe-t2i",
+        "",
+        "system_prompt.txt",
+        "model default",
+        "auto",
+        800,
+        8192,
+        16384,
+        1,
+        0.95,
+        20,
+        0,
+        1.5,
+        "",
+        600,
+        ""
+      ],
+      "widgets_values_named": {
+        "api": "OpenAI-compatible chat",
+        "base_url": "http://example.local:11434",
+        "model": "qwen-pe-t2i",
+        "api_key_name": "",
+        "system_prompt": "system_prompt.txt",
+        "thinking": "model default",
+        "thinking_field": "auto",
+        "plan_tokens": 800,
+        "max_new_tokens": 8192,
+        "context_length": 16384,
+        "temperature": 1,
+        "top_p": 0.95,
+        "top_k": 20,
+        "min_p": 0,
+        "presence_penalty": 1.5,
+        "keep_alive": "",
+        "timeout": 600,
+        "extra_json": ""
+      }
+    },
+    {
+      "id": 500,
+      "type": "Note",
+      "pos": [
+        -791.9943336612907,
+        1920.855759672431
+      ],
+      "size": [
+        368.2934998443902,
+        254.98680834014613
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "Dynamic prompts with enhancer\n\nYou need a loader. \nLocal:\nThe prompt enhancer loader. (GGUF) is used when you have the prompt enhancing model in GGUF format installed locally on your comfy UI server in./models/LLM/.\nRemote:\nUse the prompt enhancer loader API when you have the model loaded in a LLM server somewhere like Ollama, or you are using a commercial API like Claude\n\nIn both cases, you need the system_prompt.txt file to be in ./models/LLM/.\n\nThis workflow is using Qwen2.1 but it could be adapted to any system. You just need to find a system prompt and prompt enhancer for that system and install it."
+      ],
+      "widgets_values_named": {
+        "text": "Dynamic prompts with enhancer\n\nYou need a loader. \nLocal:\nThe prompt enhancer loader. (GGUF) is used when you have the prompt enhancing model in GGUF format installed locally on your comfy UI server in./models/LLM/.\nRemote:\nUse the prompt enhancer loader API when you have the model loaded in a LLM server somewhere like Ollama, or you are using a commercial API like Claude\n\nIn both cases, you need the system_prompt.txt file to be in ./models/LLM/.\n\nThis workflow is using Qwen2.1 but it could be adapted to any system. You just need to find a system prompt and prompt enhancer for that system and install it."
+      },
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 501,
+      "type": "GPromptEnhancerLoaderGGUFEdit",
+      "pos": [
+        -11.038200647823459,
+        1216.0960777068012
+      ],
+      "size": [
+        350.2525390625,
+        394
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 4,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "enhancer",
+          "type": "GPROMPT_ENHANCER",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "GPromptEnhancerLoaderGGUFEdit"
+      },
+      "widgets_values": [
+        "Qwen-Image-2.1-PE-I2I.Q4_K_S.gguf",
+        "pe_i2i_heretic.mmproj-bf16.gguf",
+        "system_prompt_I2I.txt",
+        16384,
+        8192,
+        -1,
+        1,
+        0.95,
+        20,
+        0,
+        true,
+        800,
+        "0.5",
+        true,
+        true
+      ],
+      "widgets_values_named": {
+        "model": "Qwen-Image-2.1-PE-I2I.Q4_K_S.gguf",
+        "mmproj": "pe_i2i_heretic.mmproj-bf16.gguf",
+        "system_prompt": "system_prompt_I2I.txt",
+        "context_length": 16384,
+        "max_new_tokens": 8192,
+        "gpu_layers": -1,
+        "temperature": 1,
+        "top_p": 0.95,
+        "top_k": 20,
+        "presence_penalty": 0,
+        "enable_thinking": true,
+        "plan_tokens": 800,
+        "llm_image_megapixels": "0.5",
+        "keep_loaded": true,
+        "flash_attn": true
+      }
+    },
+    {
+      "id": 502,
+      "type": "LoadImage",
+      "pos": [
+        3.8950260656057805,
+        1728.434019139101
+      ],
+      "size": [
+        282.798828125,
+        314.0000000000002
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            743,
+            744
+          ]
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "901Lastframe_00028_.png",
+        "image"
+      ],
+      "widgets_values_named": {
+        "image": "901Lastframe_00028_.png",
+        "upload": "image"
+      }
+    },
+    {
+      "id": 503,
+      "type": "Reroute",
+      "pos": [
+        295.7990921346445,
+        2254.7540508317375
+      ],
+      "size": [
+        75,
+        26
+      ],
+      "flags": {},
+      "order": 15,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "",
+          "type": "*",
+          "link": 744
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "IMAGE",
+          "links": [
+            745
+          ]
+        }
+      ],
+      "properties": {
+        "showOutputText": false,
+        "horizontal": false
+      }
+    },
+    {
+      "id": 504,
+      "type": "GPromptEnhancerLoaderAPIEdit",
+      "pos": [
+        387.4109443717961,
+        1147.3655561700787
+      ],
+      "size": [
+        400,
+        520
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "enhancer",
+          "type": "GPROMPT_ENHANCER",
+          "links": [
+            746
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "GPromptEnhancerLoaderAPIEdit"
+      },
+      "widgets_values": [
+        "Anthropic messages",
+        "",
+        "claude-haiku-4-5-20251001",
+        "anthropic",
+        "system_prompt_I2I_heretic.txt",
+        "off",
+        "auto",
+        800,
+        8192,
+        16384,
+        1,
+        0.95,
+        20,
+        0,
+        0,
+        "",
+        600,
+        "",
+        "0.5"
+      ],
+      "widgets_values_named": {
+        "api": "Anthropic messages",
+        "base_url": "",
+        "model": "claude-haiku-4-5-20251001",
+        "api_key_name": "anthropic",
+        "system_prompt": "system_prompt_I2I_heretic.txt",
+        "thinking": "off",
+        "thinking_field": "auto",
+        "plan_tokens": 800,
+        "max_new_tokens": 8192,
+        "context_length": 16384,
+        "temperature": 1,
+        "top_p": 0.95,
+        "top_k": 20,
+        "min_p": 0,
+        "presence_penalty": 0,
+        "keep_alive": "",
+        "timeout": 600,
+        "extra_json": "",
+        "llm_image_megapixels": "0.5"
+      }
+    },
+    {
+      "id": 505,
+      "type": "Note",
+      "pos": [
+        859.4213194685832,
+        1151.3106360405368
+      ],
+      "size": [
+        508.00910719414753,
+        364.40008590490993
+      ],
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "USING CLAUDE AS YOUR PROMPT ENHANCER\n\n1. API KEY\n   Settings > Gadzoinks > LLM > \"LLM API keys, named\":\n       anthropic=sk-ant-your-secret-key\n   (Several keys: anthropic=...; openai=...)\n   Keys never go on a node - node values are saved into workflows and images.\n\n2. LOADER\n   Use \"Prompt Enhancer Loader (API, edit)\" for image-to-image\n   (or \"Prompt Enhancer Loader (API)\" for text-to-image):\n       api           = Anthropic messages\n       base_url      = (blank)\n       model         = claude-haiku-4-5-20251001   (cheapest; plenty for this job)\n       api_key_name  = anthropic\n       system_prompt = must match the model type and task,\n                       here: Qwen-Image 2.1 image-to-image (the ~18 KB one)\n       thinking      = off\n\n3. DYNAMIC PROMPTS WITH ENHANCER\n   enhance = every run\n       One Claude call per image; every prompt is written for its own values.\n       \"once, then substitute\" makes a single call per batch (cheapest), but\n       breaks when the rewrite rewords your choices (dinosaur -> sauropod).\n   prefetch_next = auto (on for Claude)\n       The next image's prompt is written while the current one renders,\n       so you never wait for Claude. It costs one extra call per batch\n       (4 images = 5 calls). For one or two images, set it to off.\n       With the seed on randomize AND random { } blocks, prefetch guesses\n       wrong and each miss is a wasted call - use off, or a fixed seed.\n\n4. WHAT IT COSTS (Haiku 4.5, Qwen image-to-image, 1 reference image)\n   Claude caches the system prompt + image for 5 minutes (refreshed on each use).\n   The first call stores it, later calls read it at 1/10 of the price.\n\n     first image of a batch (stores the cache) ... about $0.008\n     each following image (cache reused) ........ about $0.0016\n\n   Single image, prefetch off .............................. ~$0.008\n   Single images queued one by one, less than 5 min apart .. $0.008 first,\n                                                             then ~$0.0016 each\n   Single images more than 5 min apart ..................... ~$0.008 each\n   Batch of 20, every run, prefetch on (21 calls) .......... ~$0.04\n   Batch of 20, every run, prefetch off (20 calls) ......... ~$0.038\n   Batch of 20, once then substitute (1 call) .............. ~$0.008\n\n   So 20 images cost about 4 cents; 1,000 images about $1.60.\n   Real numbers: the console prints \"prompt cache - N tokens reused ...\" per\n   call, and console.anthropic.com > Usage shows the actual bill.\n\n   Text-to-image is cached only if the prompt is long enough (4,096+ tokens on\n   Haiku). The short FLUX.2 prompt never is: ~$0.0023 per image, ~5 cents / 20."
+      ],
+      "widgets_values_named": {
+        "text": "USING CLAUDE AS YOUR PROMPT ENHANCER\n\n1. API KEY\n   Settings > Gadzoinks > LLM > \"LLM API keys, named\":\n       anthropic=sk-ant-your-secret-key\n   (Several keys: anthropic=...; openai=...)\n   Keys never go on a node - node values are saved into workflows and images.\n\n2. LOADER\n   Use \"Prompt Enhancer Loader (API, edit)\" for image-to-image\n   (or \"Prompt Enhancer Loader (API)\" for text-to-image):\n       api           = Anthropic messages\n       base_url      = (blank)\n       model         = claude-haiku-4-5-20251001   (cheapest; plenty for this job)\n       api_key_name  = anthropic\n       system_prompt = must match the model type and task,\n                       here: Qwen-Image 2.1 image-to-image (the ~18 KB one)\n       thinking      = off\n\n3. DYNAMIC PROMPTS WITH ENHANCER\n   enhance = every run\n       One Claude call per image; every prompt is written for its own values.\n       \"once, then substitute\" makes a single call per batch (cheapest), but\n       breaks when the rewrite rewords your choices (dinosaur -> sauropod).\n   prefetch_next = auto (on for Claude)\n       The next image's prompt is written while the current one renders,\n       so you never wait for Claude. It costs one extra call per batch\n       (4 images = 5 calls). For one or two images, set it to off.\n       With the seed on randomize AND random { } blocks, prefetch guesses\n       wrong and each miss is a wasted call - use off, or a fixed seed.\n\n4. WHAT IT COSTS (Haiku 4.5, Qwen image-to-image, 1 reference image)\n   Claude caches the system prompt + image for 5 minutes (refreshed on each use).\n   The first call stores it, later calls read it at 1/10 of the price.\n\n     first image of a batch (stores the cache) ... about $0.008\n     each following image (cache reused) ........ about $0.0016\n\n   Single image, prefetch off .............................. ~$0.008\n   Single images queued one by one, less than 5 min apart .. $0.008 first,\n                                                             then ~$0.0016 each\n   Single images more than 5 min apart ..................... ~$0.008 each\n   Batch of 20, every run, prefetch on (21 calls) .......... ~$0.04\n   Batch of 20, every run, prefetch off (20 calls) ......... ~$0.038\n   Batch of 20, once then substitute (1 call) .............. ~$0.008\n\n   So 20 images cost about 4 cents; 1,000 images about $1.60.\n   Real numbers: the console prints \"prompt cache - N tokens reused ...\" per\n   call, and console.anthropic.com > Usage shows the actual bill.\n\n   Text-to-image is cached only if the prompt is long enough (4,096+ tokens on\n   Haiku). The short FLUX.2 prompt never is: ~$0.0023 per image, ~5 cents / 20."
+      },
+      "color": "#432",
+      "bgcolor": "#653"
+    }
+  ],
+  "links": [
+    [
+      686,
+      471,
+      0,
+      472,
+      1,
+      "STRING"
+    ],
+    [
+      694,
+      475,
+      0,
+      476,
+      0,
+      "UPSCALE_MODEL"
+    ],
+    [
+      699,
+      479,
+      0,
+      476,
+      1,
+      "IMAGE"
+    ],
+    [
+      701,
+      476,
+      0,
+      472,
+      0,
+      "IMAGE"
+    ],
+    [
+      703,
+      483,
+      0,
+      485,
+      1,
+      "VAE"
+    ],
+    [
+      704,
+      485,
+      0,
+      479,
+      0,
+      "IMAGE"
+    ],
+    [
+      705,
+      486,
+      0,
+      485,
+      0,
+      "LATENT"
+    ],
+    [
+      706,
+      481,
+      0,
+      486,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      707,
+      484,
+      0,
+      486,
+      3,
+      "LATENT"
+    ],
+    [
+      708,
+      481,
+      1,
+      486,
+      2,
+      "CONDITIONING"
+    ],
+    [
+      715,
+      488,
+      0,
+      486,
+      0,
+      "MODEL"
+    ],
+    [
+      722,
+      492,
+      4,
+      471,
+      5,
+      "STRING"
+    ],
+    [
+      724,
+      492,
+      0,
+      471,
+      0,
+      "STRING"
+    ],
+    [
+      726,
+      492,
+      2,
+      471,
+      4,
+      "STRING"
+    ],
+    [
+      727,
+      492,
+      0,
+      493,
+      0,
+      "STRING"
+    ],
+    [
+      730,
+      492,
+      6,
+      471,
+      2,
+      "INT"
+    ],
+    [
+      731,
+      492,
+      7,
+      471,
+      3,
+      "INT"
+    ],
+    [
+      732,
+      492,
+      6,
+      484,
+      0,
+      "INT"
+    ],
+    [
+      733,
+      492,
+      7,
+      484,
+      1,
+      "INT"
+    ],
+    [
+      734,
+      492,
+      1,
+      471,
+      6,
+      "STRING"
+    ],
+    [
+      735,
+      492,
+      3,
+      497,
+      0,
+      "INT"
+    ],
+    [
+      736,
+      497,
+      0,
+      486,
+      4,
+      "INT"
+    ],
+    [
+      737,
+      492,
+      3,
+      471,
+      7,
+      "INT"
+    ],
+    [
+      738,
+      492,
+      1,
+      471,
+      1,
+      "STRING"
+    ],
+    [
+      739,
+      480,
+      0,
+      488,
+      0,
+      "MODEL"
+    ],
+    [
+      740,
+      482,
+      0,
+      489,
+      0,
+      "CLIP"
+    ],
+    [
+      744,
+      502,
+      0,
+      503,
+      0,
+      "IMAGE"
+    ],
+    [
+      718,
+      489,
+      0,
+      481,
+      0,
+      "CLIP"
+    ],
+    [
+      745,
+      503,
+      0,
+      481,
+      1,
+      "IMAGE"
+    ],
+    [
+      746,
+      504,
+      0,
+      492,
+      0,
+      "GPROMPT_ENHANCER"
+    ],
+    [
+      743,
+      502,
+      0,
+      492,
+      1,
+      "IMAGE"
+    ],
+    [
+      729,
+      483,
+      0,
+      481,
+      5,
+      "VAE"
+    ],
+    [
+      728,
+      493,
+      0,
+      481,
+      6,
+      "STRING"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 38,
+      "title": "Models",
+      "bounding": [
+        102.80328082837445,
+        2517.9112385055937,
+        530,
+        590
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    },
+    {
+      "id": 40,
+      "title": "Conditioning",
+      "bounding": [
+        662.8032808283745,
+        2517.9112385055937,
+        700,
+        860
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    },
+    {
+      "id": 41,
+      "title": "Sampling",
+      "bounding": [
+        1392.8032808283745,
+        2517.9112385055937,
+        470,
+        860
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    }
+  ],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 1.0256652711896745,
+      "offset": [
+        369.27939005621874,
+        -790.5669658159229
+      ]
+    },
+    "frontendVersion": "1.53.6",
+    "VHS_latentpreview": false,
+    "VHS_latentpreviewrate": 0,
+    "VHS_MetadataImage": true,
+    "VHS_KeepIntermediate": true,
+    "reroutes": [
+      {
+        "id": 1,
+        "pos": [
+          314.55753683513865,
+          1701.8605828299803
+        ],
+        "linkIds": [
+          743
+        ]
+      }
+    ],
+    "linkExtensions": [
+      {
+        "id": 743,
+        "parentId": 1
+      }
+    ]
+  },
+  "extensions": {
+    "seed_widgets": {
+      "486": 0,
+      "492": 2
+    }
+  },
+  "version": 0.4
+}
