@@ -20,6 +20,9 @@ const SETTING_MAP = {
     "Gadzoinks.immich.hostname":         "immich_hostname",
     "Gadzoinks.immich.apikey":           "immich_apikey",
     "Gadzoinks.immich.include.hostname": "immich_includehostname",
+    "Gadzoinks.llm.api_key":             "llm_api_key",
+    "Gadzoinks.llm.api_keys":            "llm_api_keys",
+    "Gadzoinks.debug_logging":           "debug_logging",
 };
 
 function collectSettings() {
@@ -112,6 +115,38 @@ app.registerExtension({
             defaultValue: "",
             category: ["Gadzoinks", "Account", "Apikey"],
             async onChange(value) { setbackendVariables({immich_apikey: value}); }
+        },
+        {
+            // API keys for "Prompt Enhancer Loader (API)". Kept here, not on the
+            // node, so they never end up in saved workflows or image metadata.
+            id: "Gadzoinks.llm.api_key",
+            name: "LLM API key (default)",
+            tooltip: "Used by Prompt Enhancer Loader (API) when its api_key_name is blank.",
+            type: "text",
+            defaultValue: "",
+            category: ["Gadzoinks", "LLM", "ApiKey"],
+            async onChange(value) { setbackendVariables({llm_api_key: value}); }
+        },
+        {
+            id: "Gadzoinks.llm.api_keys",
+            name: "LLM API keys, named (name=key; name=key)",
+            tooltip: "Extra keys for other providers, e.g. openrouter=sk-or-...; dashscope=sk-... " +
+                     "Select one on the loader with api_key_name.",
+            type: "text",
+            defaultValue: "",
+            category: ["Gadzoinks", "LLM", "ApiKeys"],
+            async onChange(value) { setbackendVariables({llm_api_keys: value}); }
+        },
+        {
+            // Debug detail in the ComfyUI console. Turn on when reporting a problem.
+            id: "Gadzoinks.debug_logging",
+            name: "Debug logging (console)",
+            tooltip: "Show Gadzoinks debug messages in the ComfyUI console and log. " +
+                     "Turn on when reporting a problem; API keys are never logged.",
+            type: "boolean",
+            defaultValue: false,
+            category: ["Gadzoinks", "Debug", "Logging"],
+            async onChange(value) { setbackendVariables({debug_logging: value}); }
         },
     ],
     async setup() {

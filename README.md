@@ -5,7 +5,7 @@ This package provides custom nodes for ComfyUI that enhance prompt generation, s
 
 ## Nodes Overview
 - **GPrompts** - Create dynamic prompts with random or sequential selection. Also supports wildcard files.
-- **Dynamic Prompts with Enhancer** + **Prompt Enhancer Loader (GGUF / API)** - GPrompts plus an LLM prompt enhancer (e.g. the Qwen-Image-2.1 prompt rewriter), local GGUF or any Ollama/OpenAI-compatible/Anthropic API, with one LLM call per batch.
+- **Dynamic Prompts with Enhancer** + **Prompt Enhancer Loaders (GGUF / API, text-to-image / edit)** + **Enhancer Pair** - GPrompts plus an LLM prompt enhancer (e.g. the Qwen-Image-2.1 prompt rewriters), local GGUF or any Ollama/OpenAI-compatible/Anthropic API, for text-to-image and image editing, calling the LLM every run or once per batch.
 - **String Formatter** - Build custom output strings from multiple inputs and system variables.
 - **Save Image With Notes** - Save images with embedded workflow notes and metadata.
 - **Load Images From Folder** - Load images from a folder one at a time, in order, or randomly, and read back the prompt they were created with.
@@ -149,16 +149,48 @@ For `{{}}` sequential you will get all 4 seasons.
 Same dynamic prompt syntax as GPrompts, plus an LLM that rewrites the prompt into the long, detailed
 form image models like Qwen-Image 2.1 work best with.
 
-Only the **first** expansion goes to the LLM. For every later run the node swaps that run's chosen
-values into the LLM's rewrite in place of the first run's values, so a whole batch costs one LLM
-call. Example: `a {{tiki bar|beach hut}} with {red|amber} lanterns` is rewritten once as
-"Cinematic photo of a tiki bar with amber lanterns at dusk", and the next run becomes
-"Cinematic photo of a beach hut with red lanterns at dusk".
+The **enhance** setting picks how often the LLM runs:
 
-With **preserve_dynamic_words** on (the default) the LLM is asked to keep those words verbatim. If it
-rewords one anyway ("cat" becomes "kitten"), that variation can't be swapped in; the console says so
-and that run keeps the first run's value. Changing the text, delimiter style, seed or any enhancer
-setting starts over with a new LLM call.
+- **every run** (default) - each run's expansion is sent to the LLM. One LLM call per image, and
+  every prompt is rewritten around its own values. With a seed above 0 the LLM gets `seed + run
+  number`, so a combination that comes round again gets a fresh (but reproducible) rewrite.
+- **once, then substitute** - only the **first** expansion goes to the LLM. For every later run the
+  node swaps that run's chosen values into the LLM's rewrite, so a whole batch costs one LLM call.
+  Example: `a {{tiki bar|beach hut}} with {red|amber} lanterns` is rewritten once as "Cinematic
+  photo of a tiki bar with amber lanterns at dusk", and the next run becomes "Cinematic photo of a
+  beach hut with red lanterns at dusk". This only works while the LLM keeps the values as words
+  that can be swapped. If it rewords or elaborates them ("add a dinosaur" becomes "a towering
+  sauropod..."), later runs can't swap in their value; use **every run** for prompts like that.
+
+With **every run**, **prefetch_next** hides most of the LLM's time: as soon as a run's prompt is
+out, the node expands the next run and starts rewriting it on a background thread, so the LLM works
+while the image renders, and the next run usually finds its prompt ready.
+- `auto` (default) - on for an API loader pointing at another machine or a hosted service, and for a
+  GGUF on the CPU (`gpu_layers` = 0). Off for an API server on this machine (`localhost`, a blank
+  `base_url` for the local styles, or this machine's own name or address), which shares the GPU.
+- `on` - also prefetch from a server on this machine (it may slow the image a little; a failure
+  there only fails that rewrite).
+- `off` - never.
+
+A **GGUF on the GPU never prefetches, not even with `on`**. It runs inside the ComfyUI process, and
+llama.cpp aborts the whole process on a GPU error, such as running out of memory while the image
+model samples at the same time. That takes ComfyUI down (`Fatal Python error: Aborted`, core
+dumped). To prefetch with a local model, run it on the CPU (`gpu_layers` 0; the vision projector
+then runs on the CPU too) or behind a server such as Ollama or llama-server.
+
+The next run's expansion is predictable for sequential `{{ }}` blocks and for random `{ }` blocks
+with a fixed seed. With the seed set to randomize and random blocks in the text, the prediction is
+usually wrong: the background rewrite is dropped and that run calls the LLM itself (no gain, no
+harm). After the last run of a batch one background rewrite goes unused, which on a paid API is one
+wasted call.
+
+In substitute mode, **preserve_dynamic_words** (on by default) asks the LLM to keep the chosen words
+verbatim. If it rewords one anyway ("cat" becomes "kitten"), that variation can't be swapped in; the
+console says so and that run keeps the first run's value.
+
+Changing the text, delimiter style, `enhance` mode, any enhancer setting or a reference image starts
+the batch over. The seed does not: as in Dynamic Prompts it only picks the random blocks, so a seed
+set to randomize still steps through the combinations.
 
 ### Outputs
 - `text` / `computed_prompt` - the final prompt for this run
@@ -173,12 +205,48 @@ setting starts over with a new LLM call.
   1.0 = 1024), for the `resolution` input of Text Encode Qwen Image 2.1 in edit workflows. For
   text-to-image, don't use that node's latent output: it is always square. Use width/height into
   an Empty Latent Image instead; the encode node's `resolution` then has no effect.
+- `ratio_follow` - for edits, the reference image whose shape the output keeps (e.g. `image1`),
+  as chosen by the LLM; width/height follow that image's shape.
+
+### Getting the models
+The Qwen-Image-2.1 prompt rewriters come as two separate models, one for text-to-image (**PE-T2I**)
+and one for image editing (**PE-I2I**), each with its own system prompt. The edit model also needs
+its vision projector (**mmproj**), the file that lets the LLM see images. Any quantization works
+(Q4_K_M ~6 GB, Q6_K ~7.5 GB). For example, with the `hf` command from `huggingface_hub`, run from
+the ComfyUI folder:
+
+```
+hf download pottokao/Qwen-Image-2.1-PE-T2I-Heretic-GGUF \
+  pe_t2i_heretic-Q4_K_M.gguf system_prompt.txt --local-dir models/LLM/pe_t2i
+
+hf download pottokao/Qwen-Image-2.1-PE-I2I-Heretic-GGUF \
+  pe_i2i_heretic-Q4_K_M.gguf pe_i2i_heretic.mmproj-bf16.gguf system_prompt.txt \
+  --local-dir models/LLM/pe_i2i
+```
+
+or download the same files in a browser from the repos' *Files* tab. Keep each model in its own
+subfolder: both ship a file called `system_prompt.txt`, and the edit one (~18 KB) is different from
+the text-to-image one (~10 KB).
+
+```
+ComfyUI/models/LLM/
+    pe_t2i/  pe_t2i_heretic-Q4_K_M.gguf, system_prompt.txt
+    pe_i2i/  pe_i2i_heretic-Q4_K_M.gguf, pe_i2i_heretic.mmproj-bf16.gguf, system_prompt.txt
+```
+
+Other GGUF builds work too, but the mmproj must come from the same repo as its model. After adding
+files, refresh the browser page (or restart ComfyUI) so the node lists pick them up.
 
 ### Prompt Enhancer Loader (GGUF)
 Put the `.gguf` model and its system prompt file (`.txt` or `.md`) in `ComfyUI/models/LLM/`
 (subfolders are fine), then pick them on the node. The model loads the first time a prompt is
 enhanced; turn `keep_loaded` off to free its VRAM after each use, or set `gpu_layers` to 0 to run it
 on the CPU and leave the GPU to the image model.
+
+Note that `gpu_layers` defaults to -1: the **whole LLM goes on the GPU** and, with `keep_loaded` on,
+stays there next to the image model. A 9B rewriter at Q4-Q6 holds roughly 6-8 GB of VRAM plus its
+context. If the image model runs short of memory, turn `keep_loaded` off or set `gpu_layers` to 0
+(slower rewrites, but no VRAM used).
 
 For the Qwen-Image-2.1 prompt rewriters, use the `system_prompt.txt` that ships with the model; they
 produce nothing useful without it. Keep `enable_thinking` on, and use `presence_penalty` ~1.5 for the
@@ -244,6 +312,101 @@ workflows and image metadata):
 
 For Ollama, set `context_length` (Ollama's small default context silently truncates the 10 KB
 Qwen-Image system prompt) and use `keep_alive` = `0` to unload the model right after each call.
+
+#### Quick start: a Qwen-Image rewriter on Ollama
+Useful for running the LLM on another machine (a Mac, a second PC) so the ComfyUI GPU is left to the
+image model.
+
+1. On the LLM machine, import the GGUF into Ollama. No template or system prompt is needed in the
+   Modelfile: the node sends both.
+   ```
+   echo 'FROM ./pe_t2i_heretic-Q4_K_M.gguf' > Modelfile
+   ollama create qwen-pe-t2i -f Modelfile
+   ollama list
+   ```
+2. If ComfyUI is on a different machine, make Ollama listen on the network: `OLLAMA_HOST=0.0.0.0
+   ollama serve`, or for the macOS app `launchctl setenv OLLAMA_HOST 0.0.0.0` and restart the app.
+   Check from the ComfyUI machine: `curl http://<llm-host>:11434/api/tags` should list the model.
+   Ollama has no authentication; only do this on a network you trust.
+3. Keep the matching `system_prompt.txt` in `models/LLM` on the **ComfyUI** machine.
+4. On **Prompt Enhancer Loader (API)** set `api` = `Ollama generate (raw prompt)`, `base_url` =
+   blank (same machine) or `http://<llm-host>:11434`, `model` = `qwen-pe-t2i`, `system_prompt` = the
+   T2I `system_prompt.txt`, `context_length` = 16384. Leave `api_key_name` blank.
+5. Queue. The console shows `GPromptsEnhanced: Ollama generate (raw prompt) -> ... model=qwen-pe-t2i`
+   and then `... finish=early` when the answer is complete.
+
+If `ollama create` rejects the GGUF's architecture, update Ollama. Or serve the GGUF with
+llama.cpp's own server instead (`llama-server -m pe_t2i_heretic-Q4_K_M.gguf -c 16384 --host 0.0.0.0
+--port 8080`) and use `api` = `OpenAI-compatible completions (raw prompt)` with `base_url` =
+`http://<llm-host>:8080/v1`.
+
+For **edits** over an API, the server must see images: use a chat style on the edit loader and a
+server that serves the PE-I2I model together with its mmproj (e.g. `llama-server -m
+pe_i2i_heretic-Q4_K_M.gguf --mmproj pe_i2i_heretic.mmproj-bf16.gguf ...`).
+
+### Image editing
+Connect reference images to **Dynamic Prompts with Enhancer**: its `image_1` socket grows a new one
+each time you connect an image (up to 16, like Text Encode Qwen Image 2.1). Refer to them in your text
+as `<image1>`, `<image2>`, ... When images are connected, the node uses an **edit** loader; without
+them, a **text-to-image** loader.
+
+| Loader | Use |
+|---|---|
+| Prompt Enhancer Loader (GGUF) / (API) | text-to-image |
+| Prompt Enhancer Loader (GGUF, edit) / (API, edit) | image edit (the LLM sees the images) |
+| Enhancer Pair | one text-to-image + one edit loader behind a single `enhancer` output |
+
+An edit model needs its own files: for Qwen-Image-2.1 the **PE-I2I** GGUF, its **mmproj** vision
+projector (also in `models/LLM`), and its own ~18 KB system prompt - not the text-to-image ones. Use
+`presence_penalty` 0 for it. Images are downscaled for the LLM (`llm_image_megapixels`, ~512 tokens per
+image at 0.5); the encode node still receives the originals. The API edit loader offers only the chat
+styles, since raw prompts can't carry images; the server must serve a vision model (llama-server with
+`--mmproj`, an Ollama vision model, or a hosted one).
+
+**Wiring an edit:** each Load Image goes to *two* places, in the same order:
+1. `image_1`, `image_2`, ... on Dynamic Prompts with Enhancer (so the rewriter sees them), and
+2. `image_1`, `image_2`, ... on Text Encode Qwen Image 2.1, with the VAE connected (so the image
+   model edits them).
+
+Then `text` -> the encode node's prompt, `resolution` -> its `resolution`, and use **the encode node's
+own latent output** for the sampler (it is sized from the first reference; any other size shifts the
+edit). In **once, then substitute** mode the images stay fixed for the batch while the dynamic
+blocks vary the instruction, so the batch costs one LLM call; changing an image starts a new one.
+
+### Warnings
+- **every run costs one LLM call per image.** With thinking on, that can take longer than the image
+  itself; use `prefetch_next` (API or CPU), a lower `plan_tokens`, or thinking off. On a paid API,
+  every image is a paid request.
+- **once, then substitute is only safe for simple swaps** (colours, plain nouns). If the LLM
+  rewrites a value into something else, later runs keep the first run's word; the console prints
+  `'<word>' not found in the enhanced prompt, so '<new word>' was not applied` when that happens.
+- **Local GGUF uses the GPU by default** (`gpu_layers` -1) and competes with the image model for
+  VRAM. It is never run in the background (see `prefetch_next`): a GPU error there would abort
+  ComfyUI.
+- **prefetch_next makes one extra call per batch** (the rewrite for a run that never comes). Set it
+  to `off` for paid APIs if that matters.
+- **Your prompts leave the machine** when the API loader points at a hosted service (OpenAI,
+  OpenRouter, Anthropic, DashScope, ...), and reference images do too with the edit loader.
+- **Node values are saved into workflows and image metadata.** That is why API keys only go in
+  Settings > Gadzoinks > LLM; the node refuses `extra_json` or `api_key_name` values that look like
+  a key.
+- **The edit and text-to-image files are not interchangeable.** The PE-I2I model with the T2I system
+  prompt (or the other way round) gives poor or broken prompts.
+
+### Troubleshooting
+| Message or symptom | Cause and fix |
+|---|---|
+| `mmproj must be the vision projector file, not the model itself` (shown under model, mmproj and system_prompt) | There is no mmproj file in `models/LLM`, so the list fell back to all GGUFs. Download the model's `...mmproj...gguf` (see *Getting the models*), refresh, and select it. ComfyUI repeats the one error under every input it checks. |
+| `GGUF model / mmproj / System prompt file not found in models/LLM` | The file was moved or renamed; refresh the page and pick it again. |
+| `The GGUF prompt enhancer needs the llama_cpp package` | Install llama-cpp-python (see *Requirements*), or use the API loader. |
+| `Reference images are connected, but the enhancer is a text-to-image loader` (or the reverse) | Use the matching loader, or an Enhancer Pair with both. |
+| API: connection refused or timeout | The server isn't running or isn't listening on the network (`OLLAMA_HOST`), or `base_url` is wrong. |
+| API: HTTP 404 | `model` doesn't match the server's name for it (`ollama list`). |
+| API: HTTP 401/403 | Missing or wrong key in Settings > Gadzoinks > LLM, or the wrong `api_key_name`. |
+| Output ignores the rewriting rules, or no JSON / no `wh_ratio` | No system prompt selected, the wrong one, or (Ollama) `context_length` too small for it. |
+| `'<word>' not found in the enhanced prompt, so ... was not applied` | once, then substitute mode and the LLM reworded that value. Switch `enhance` to every run. |
+| ComfyUI dies with `Fatal Python error: Aborted` in `llama_cpp` ... `ggml_abort` | llama.cpp hit a GPU error, usually out of VRAM next to the image model. Turn `keep_loaded` off, use a smaller quant or `context_length`, or run the LLM on the CPU (`gpu_layers` 0) or on another machine. |
+| Very slow rewrites | Thinking is on with no cap: lower `plan_tokens` or turn thinking off. Check that a GGUF is really on the GPU (`gpu_layers` -1) or that `ollama ps` shows GPU. |
 
 ---
 
@@ -430,3 +593,80 @@ You can check that it is installed by running `ffmpeg -version` in a terminal.
 ** Immich support **
 All of these nodes work with standard Immich, but I have my own fork of Immich with extra features such as the ability to see the prompt and metadata of an Image, and the ability to search for text in a prompt ( find all images of dragons )
 The installation is still rough, https://github.com/neal3000/immich_gadzoinks/tree/immich_gadzoinks
+
+---
+
+# Logging and debugging
+All nodes in this pack write to the ComfyUI console: the terminal window ComfyUI runs in, and the
+**Logs** tab in ComfyUI's bottom panel (terminal icon). Messages are tagged by level:
+
+| Level | What you see | Shown by default |
+|---|---|---|
+| `[INFO]` | one short line per action: which LLM is called, prompt cache use, speed | yes |
+| `[WARNING]` | something went wrong but the run continued: an LLM answer that wasn't the expected JSON, an HTTP retry, a failed Immich upload step | yes |
+| `[ERROR]` | the run stopped; ComfyUI shows the traceback | yes |
+| `[DEBUG]` | step-by-step detail: expansions, parsing, prefetch, settings sync, Immich upload steps | **no** - turn on below |
+
+API keys are never written to the log, not even in debug output.
+
+## Turning on debug logging
+Pick one of these.
+
+### 1. In ComfyUI's settings (easiest)
+1. Open **Settings** (gear icon).
+2. Go to **Gadzoinks > Debug**.
+3. Switch on **Debug logging (console)**.
+
+It takes effect immediately, no restart needed. ComfyUI remembers the setting; after a restart it
+applies again as soon as the ComfyUI page is open in a browser. Switch it off the same way when you're
+done: debug output is verbose.
+
+### 2. With an environment variable (from startup, and without a browser)
+Set `GPROMPTS_LOG=DEBUG` before starting ComfyUI. It overrides the setting above, and is useful for
+problems during startup or for headless/API use.
+
+- **Linux / macOS**
+  ```
+  GPROMPTS_LOG=DEBUG python main.py
+  ```
+- **Windows, Command Prompt**
+  ```
+  set GPROMPTS_LOG=DEBUG
+  python main.py
+  ```
+- **Windows, PowerShell**
+  ```
+  $env:GPROMPTS_LOG = "DEBUG"
+  python main.py
+  ```
+- **Windows portable build**: edit `run_nvidia_gpu.bat` (or `run_cpu.bat`) and add the line
+  `set GPROMPTS_LOG=DEBUG` above the line that starts ComfyUI.
+
+Other values: `INFO` (the default), `WARNING` (only warnings and errors from this pack).
+
+### 3. With ComfyUI's own `--verbose` flag
+`python main.py --verbose DEBUG` turns on debug output for all of ComfyUI and every node pack, not
+just this one. It works, but expect a lot of output.
+
+## Saving the output to a file
+- **Linux / macOS**: `GPROMPTS_LOG=DEBUG python main.py 2>&1 | tee comfyui-debug.log`
+- **Windows**: `python main.py > comfyui-debug.log 2>&1` (the console then stays empty; open the file
+  in a text editor)
+- Or copy it from the **Logs** tab in ComfyUI.
+
+## Reporting a problem
+1. Turn on debug logging (option 1 is enough).
+2. Reproduce the problem: queue the workflow again.
+3. Copy the console output from just before you queued until the error or wrong result.
+4. Include it in your issue, along with which nodes and loader settings you used.
+
+## For developers
+Use the pack's logger rather than `print`:
+```python
+from .common import get_logger
+log = get_logger("mypart")          # appears as gprompts.mypart
+log.debug("detail %s", value)       # %-style: the text is only built when debug is on
+log.info("one line per action")
+log.warning("recovered from a problem")
+```
+`dprint(...)` from `common` still works and logs at debug level.
