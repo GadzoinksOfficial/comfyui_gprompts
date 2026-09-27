@@ -27,15 +27,22 @@ publishes prebuilt CUDA wheels.
 A future API/Ollama loader only has to output an object implementing
 PromptEnhancerBase (cache_key + enhance).
 """
+import base64
 import gc
+import hashlib
 import json
 import math
 import os
 import inspect
 import random
 import re
+import threading
 import time
 from dataclasses import dataclass
+from io import BytesIO
+
+import numpy as np
+from PIL import Image as PILImage
 
 import folder_paths
 import comfy.model_management as model_management
@@ -43,8 +50,54 @@ import comfy.utils
 from comfy_api.latest import io
 from server import PromptServer
 
-from .common import dprint, DynamicPromptEngine
+from .common import DynamicPromptEngine, get_logger
 from .comfyui_gprompts import promtpForId
+
+log = get_logger("enhancer")
+
+
+# ----------------------------------------------------------------------------
+# Background (prefetch) generation
+# The next run's rewrite can be generated on a worker thread while the image
+# model works. On that thread, ComfyUI's interrupt flag must not be consumed
+# (it belongs to whatever runs on the main thread, and reading it with
+# throw_exception_if_processing_interrupted clears it), and progress bars must
+# stay quiet (they would draw on whichever node is running). Enhancers call
+# interrupted() / check_interrupted() / progress_bar() instead.
+# ----------------------------------------------------------------------------
+_BACKGROUND = threading.local()
+
+
+class PrefetchCancelled(Exception):
+    """A background rewrite was no longer needed."""
+
+
+def _background_cancel():
+    return getattr(_BACKGROUND, "cancel", None)
+
+
+def interrupted():
+    cancel = _background_cancel()
+    if cancel is not None and cancel.is_set():
+        return True
+    return model_management.processing_interrupted()      # reading only; never clears it
+
+
+def check_interrupted():
+    if _background_cancel() is not None:
+        if interrupted():
+            raise PrefetchCancelled()
+        return
+    model_management.throw_exception_if_processing_interrupted()
+
+
+class _SilentBar:
+    def update(self, n):
+        pass
+
+
+def progress_bar(total):
+    return _SilentBar() if _background_cancel() is not None else comfy.utils.ProgressBar(total)
 
 
 # ----------------------------------------------------------------------------
@@ -110,18 +163,94 @@ class EnhanceResult:
     thinking: str        # reasoning trace (not used downstream, logged only)
     raw: str             # full model output
     parse_ok: bool       # True if the answer was the expected JSON
+    ratio_follow: str = ""   # edit models: which input image's shape to keep, e.g. "image1"
+
+
+TASK_T2I = "text-to-image"
+TASK_EDIT = "image edit"
+TASK_PAIR = "text-to-image + image edit"
 
 
 class PromptEnhancerBase:
     """What 'Dynamic Prompts with Enhancer' needs from a loader."""
+
+    task = TASK_T2I
 
     def cache_key(self) -> str:
         """Changes whenever the same input could produce different output
         (model, system prompt, sampling settings)."""
         raise NotImplementedError
 
-    def enhance(self, user_text: str, seed: int) -> EnhanceResult:
+    def cache_key_for(self, has_images):
+        return self.cache_key()
+
+    def check_task(self, has_images):
+        """Raise a clear error when this enhancer can't handle the request."""
+        if has_images and self.task == TASK_T2I:
+            raise RuntimeError(
+                "Reference images are connected, but the enhancer is a text-to-image loader. "
+                "Use an image-edit loader, or an Enhancer Pair with both.")
+        if not has_images and self.task == TASK_EDIT:
+            raise RuntimeError(
+                "The enhancer is an image-edit loader, but no reference images are connected. "
+                "Connect image_1 (and image_2, ...), or use a text-to-image loader or an "
+                "Enhancer Pair with both.")
+
+    def uses_local_gpu(self, has_images):
+        """True when generating would share this machine's GPU with the image
+        model (GGUF with GPU layers, or a server on this machine). Decides
+        prefetch 'auto'."""
+        return False
+
+    def gpu_in_process(self, has_images):
+        """True when generation runs CUDA/Metal work inside the ComfyUI process
+        (GGUF with GPU layers). Never run in the background: llama.cpp aborts
+        the whole process on a GPU error, e.g. when the image model is sampling
+        at the same time."""
+        return False
+
+    def enhance(self, user_text: str, seed: int, images=None) -> EnhanceResult:
+        """images: list of ComfyUI IMAGE tensors [1,H,W,C] (edit enhancers only)."""
         raise NotImplementedError
+
+
+class EnhancerPair(PromptEnhancerBase):
+    """A text-to-image enhancer and an image-edit enhancer behind one output:
+    requests with images go to the edit one, the rest to the text one."""
+
+    task = TASK_PAIR
+
+    def __init__(self, text_enhancer, edit_enhancer):
+        self.text_enhancer = text_enhancer
+        self.edit_enhancer = edit_enhancer
+
+    def _pick(self, has_images):
+        chosen = self.edit_enhancer if has_images else self.text_enhancer
+        if chosen is None:
+            side = "edit_enhancer (reference images are connected)" if has_images else \
+                   "text_enhancer (no reference images are connected)"
+            raise RuntimeError(f"Enhancer Pair: connect {side}.")
+        return chosen
+
+    def check_task(self, has_images):
+        self._pick(has_images).check_task(has_images)
+
+    def cache_key(self):
+        return json.dumps([e.cache_key() if e else None
+                           for e in (self.text_enhancer, self.edit_enhancer)])
+
+    def cache_key_for(self, has_images):
+        return self._pick(has_images).cache_key_for(has_images)
+
+    def uses_local_gpu(self, has_images):
+        return self._pick(has_images).uses_local_gpu(has_images)
+
+    def gpu_in_process(self, has_images):
+        return self._pick(has_images).gpu_in_process(has_images)
+
+    def enhance(self, user_text, seed, images=None):
+        chosen = self._pick(bool(images))
+        return chosen.enhance(user_text, seed, images=images) if images else chosen.enhance(user_text, seed)
 
 
 # ----------------------------------------------------------------------------
@@ -130,6 +259,44 @@ class PromptEnhancerBase:
 # ----------------------------------------------------------------------------
 _PROMPT_KEYS = ("rewritten_prompt", "positive_prompt", "prompt")
 _JSON_STRING_FIELD = r'"%s"\s*:\s*"((?:[^"\\]|\\.)*)"'
+_CONTRACT_FIELDS = _PROMPT_KEYS + ("wh_ratio", "ratio_follow")
+_FIELD_OPENER = re.compile(r'"(%s)"\s*:\s*"' % "|".join(_CONTRACT_FIELDS))
+
+
+def _json_unquote(value):
+    """A JSON string body that may contain unescaped double quotes -> str."""
+    fixed = re.sub(r'(?<!\\)"', r'\\"', value).replace("\r", "\\r").replace("\n", "\\n")
+    try:
+        return json.loads('"' + fixed + '"')
+    except Exception:
+        return value.replace('\\"', '"')
+
+
+def _repair_contract(answer):
+    """Rebuild {"rewritten_prompt": ..., "wh_ratio": ..., "ratio_follow": ...}
+    when the LLM broke the JSON with unescaped double quotes inside the prompt
+    (e.g. a sign reading "OPEN"). Each value runs to the last quote before the
+    next known key; the last one to the last quote before the closing brace.
+    Returns (fields, closed) or (None, False); closed = the object was complete."""
+    openers = list(_FIELD_OPENER.finditer(answer))
+    if not openers:
+        return None, False
+    fields, closed = {}, False
+    for i, m in enumerate(openers):
+        if i + 1 < len(openers):
+            seg = answer[m.end():openers[i + 1].start()].rstrip()
+            seg = seg[:-1].rstrip() if seg.endswith(",") else seg
+            seg = seg[:-1] if seg.endswith('"') else seg
+        else:
+            seg = answer[m.end():]
+            ends = list(re.finditer(r'"\s*\}', seg))
+            if ends:
+                seg, closed = seg[:ends[-1].start()], True
+            else:                       # cut off: keep what there is
+                seg = seg.rstrip().rstrip("`").rstrip()
+                seg = seg[:-1] if seg.endswith('"') else seg
+        fields.setdefault(m.group(1), _json_unquote(seg).strip())
+    return fields, closed
 
 
 def parse_enhancer_output(text):
@@ -156,9 +323,21 @@ def parse_enhancer_output(text):
         for key in _PROMPT_KEYS:
             val = obj.get(key)
             if isinstance(val, str) and val.strip():
-                return EnhanceResult(val.strip(), str(obj.get("wh_ratio") or ""), thinking, text, True)
+                return EnhanceResult(val.strip(), str(obj.get("wh_ratio") or ""), thinking, text,
+                                     True, str(obj.get("ratio_follow") or ""))
 
-    # Malformed JSON (e.g. unescaped quote): pull the string field out directly
+    # Malformed JSON, usually unescaped double quotes inside the prompt: rebuild it
+    fields, closed = _repair_contract(answer)
+    if fields:
+        for key in _PROMPT_KEYS:
+            if fields.get(key):
+                if closed:
+                    log.info("GPromptsEnhanced: the LLM's JSON was malformed (probably unescaped "
+                          "quotes in the prompt); repaired it.")
+                return EnhanceResult(fields[key], fields.get("wh_ratio", ""), thinking, text,
+                                     closed, fields.get("ratio_follow", ""))
+
+    # Last resort: pull the string field out directly
     for key in _PROMPT_KEYS:
         m = re.search(_JSON_STRING_FIELD % key, answer, re.DOTALL)
         if m:
@@ -167,7 +346,9 @@ def parse_enhancer_output(text):
             except Exception:
                 val = m.group(1)
             ratio = re.search(_JSON_STRING_FIELD % "wh_ratio", answer)
-            return EnhanceResult(val.strip(), ratio.group(1) if ratio else "", thinking, text, False)
+            follow = re.search(_JSON_STRING_FIELD % "ratio_follow", answer)
+            return EnhanceResult(val.strip(), ratio.group(1) if ratio else "", thinking, text, False,
+                                 follow.group(1) if follow else "")
 
     # Not JSON at all: a generic LLM with a plain system prompt. Use the answer.
     return EnhanceResult(answer, "", thinking, text, False)
@@ -224,9 +405,17 @@ def _version_tuple(v):
 
 # One GGUF resident at a time; keyed by everything that requires a reload.
 _LLM_CACHE = {"key": None, "llm": None}
+# llama.cpp models are not thread-safe; a prefetch thread and the main thread
+# (or two generator nodes) take turns.
+_LLM_LOCK = threading.RLock()
 
 
 def unload_llm():
+    with _LLM_LOCK:
+        _unload_llm()
+
+
+def _unload_llm():
     llm = _LLM_CACHE.get("llm")
     _LLM_CACHE["key"] = None
     _LLM_CACHE["llm"] = None
@@ -234,27 +423,67 @@ def unload_llm():
         try:
             llm.close()
         except Exception as e:
-            dprint(f"GPromptsEnhanced: error closing LLM: {e}")
+            log.warning(f"GPromptsEnhanced: error closing LLM: {e}")
         del llm
         gc.collect()
 
 
-def _get_llm(model_path, n_ctx, n_gpu_layers, flash_attn):
+# Multimodal (edit) models: a chat template that just concatenates the
+# message parts. We build the full ChatML prompt ourselves (think prefill,
+# plan cap, answer prefill) exactly as for text; image parts become the media
+# marker, and llama.cpp's mtmd adds Qwen's <|vision_start|>/<|vision_end|>.
+PASSTHROUGH_TEMPLATE = (
+    "{%- for message in messages -%}"
+    "{%- if message.content is string -%}{{- message.content -}}"
+    "{%- else -%}{%- for item in message.content -%}"
+    "{%- if item.type == 'image_url' -%}"
+    "{{- item.image_url if item.image_url is string else item.image_url.url -}}"
+    "{%- else -%}{{- item.text -}}{%- endif -%}"
+    "{%- endfor -%}{%- endif -%}"
+    "{%- endfor -%}"
+)
+
+
+def _make_mm_handler(mmproj_path, use_gpu=True):
+    """MTMD chat handler with the pass-through template, for either build:
+    PyPI llama-cpp-python (clip_model_path, template from _get_chat_template)
+    or the JamePeng fork (mmproj_path, chat_template_override)."""
+    from llama_cpp import llama_chat_format as lcf
+    base = getattr(lcf, "MTMDChatHandler", None)
+    if base is None:
+        raise RuntimeError("This llama-cpp-python build has no multimodal (MTMD) support, which "
+                           "image editing needs.\n" + INSTALL_HELP)
+    params = _named_params(base.__init__)
+    extra = {} if use_gpu or "use_gpu" not in params else {"use_gpu": False}
+    if "chat_template_override" in params:
+        return base(mmproj_path=mmproj_path, chat_template_override=PASSTHROUGH_TEMPLATE,
+                    verbose=False, **extra)
+
+    class _PassthroughHandler(base):
+        def _get_chat_template(self, llama_model):
+            return PASSTHROUGH_TEMPLATE
+
+    key = "clip_model_path" if "clip_model_path" in params else "mmproj_path"
+    return _PassthroughHandler(verbose=False, **{key: mmproj_path}, **extra)
+
+
+def _get_llm(model_path, n_ctx, n_gpu_layers, flash_attn, mmproj_path=None):
     _require_llama_cpp()
-    key = (model_path, n_ctx, n_gpu_layers, flash_attn)
+    key = (model_path, n_ctx, n_gpu_layers, flash_attn, mmproj_path)
     if _LLM_CACHE["key"] == key and _LLM_CACHE["llm"] is not None:
         return _LLM_CACHE["llm"]
     unload_llm()
     version = getattr(llama_cpp, "__version__", "0")
-    if n_gpu_layers != 0:
-        supports_gpu = getattr(llama_cpp, "llama_supports_gpu_offload", lambda: True)
-        if not supports_gpu():
-            print("GPromptsEnhanced: this llama-cpp-python build is CPU-only; the LLM will "
-                  "run on the CPU. Install a CUDA build to use the GPU.")
-    print(f"GPromptsEnhanced: loading {os.path.basename(model_path)} (llama-cpp-python {version}, "
+    log.info(f"GPromptsEnhanced: loading {os.path.basename(model_path)} (llama-cpp-python {version}, "
           f"n_ctx={n_ctx}, gpu_layers={n_gpu_layers})")
     kwargs = dict(model_path=model_path, n_ctx=n_ctx, n_gpu_layers=n_gpu_layers, verbose=False)
+    if mmproj_path:
+        kwargs["chat_handler"] = _make_mm_handler(mmproj_path, use_gpu=n_gpu_layers != 0)
     init_params = _named_params(Llama.__init__)
+    if n_gpu_layers == 0 and "op_offload" in init_params:
+        # CPU only really means CPU: a CUDA build otherwise still runs large
+        # prompt batches on the GPU ("op offload").
+        kwargs["op_offload"] = False
     if "flash_attn" in init_params:            # llama-cpp-python (abetlen)
         kwargs["flash_attn"] = flash_attn
     elif "flash_attn_type" in init_params and not flash_attn:   # JamePeng fork, default AUTO
@@ -272,6 +501,17 @@ def _get_llm(model_path, n_ctx, n_gpu_layers, flash_attn):
             hint = (f"\nllama-cpp-python {version} is probably too old for this model.\n"
                     + INSTALL_HELP)
         raise RuntimeError(f"Could not load GGUF '{model_path}': {e}{hint}") from e
+    # Asked only after loading: builds that load their GPU backend as a plugin
+    # (libggml-cuda.so) report no GPU until a model has been loaded.
+    if n_gpu_layers != 0:
+        supports_gpu = getattr(llama_cpp, "llama_supports_gpu_offload", lambda: True)
+        try:
+            gpu = bool(supports_gpu())
+        except Exception:
+            gpu = True
+        if not gpu:
+            log.warning("GPromptsEnhanced: no GPU backend in this llama-cpp-python build; the LLM "
+                  "runs on the CPU. Install a CUDA build to use the GPU.")
     _LLM_CACHE["key"] = key
     _LLM_CACHE["llm"] = llm
     return llm
@@ -295,11 +535,12 @@ def _accepted_params(fn):
     return {p.name for p in params}
 
 
-def _adapt_sampling(llm, sampling):
-    """Fit our argument names to the installed build. Builds differ silently:
-    some expose llama.cpp's own `present_penalty` instead of `presence_penalty`,
-    and passing an unknown keyword would fail the whole call."""
-    accepted = _accepted_params(llm.create_completion)
+def _adapt_sampling(fn, sampling):
+    """Fit our argument names to the installed build's fn (create_completion or
+    create_chat_completion). Builds differ silently: some expose llama.cpp's own
+    `present_penalty` instead of `presence_penalty`, and passing an unknown
+    keyword would fail the whole call."""
+    accepted = _accepted_params(fn)
     if accepted is None:
         return dict(sampling)
     adapted = {}
@@ -309,7 +550,7 @@ def _adapt_sampling(llm, sampling):
         elif name == "presence_penalty" and "present_penalty" in accepted:
             adapted["present_penalty"] = value
         else:
-            dprint(f"GPromptsEnhanced: this llama-cpp-python build has no '{name}'; skipped")
+            log.debug(f"GPromptsEnhanced: this llama-cpp-python build has no '{name}'; skipped")
     return adapted
 
 
@@ -335,14 +576,24 @@ def _reset_runtime(llm):
         pass
 
 
-def build_chat_prompt(system_prompt, user_text, thinking, contract):
+def image_slot(i):
+    """Placeholder for image i in a raw prompt; the multimodal path swaps it for the image."""
+    return f"\u27e6gprompts-image-{i}\u27e7"
+
+
+IMAGE_SLOT_RE = re.compile("\u27e6gprompts-image-(\\d+)\u27e7")
+
+
+def build_chat_prompt(system_prompt, user_text, thinking, contract, image_count=0):
     """ChatML as the Qwen-Image-2.1 PE models were trained on: the assistant
     turn opens the think block itself. With thinking off, an empty think block
-    plus (for the PE JSON contract) the opening of the answer."""
+    plus (for the PE JSON contract) the opening of the answer. Images (edit)
+    come first in the user turn, in order, then the instruction."""
     parts = []
     if system_prompt:
         parts.append(f"<|im_start|>system\n{system_prompt}<|im_end|>\n")
-    parts.append(f"<|im_start|>user\n{user_text}<|im_end|>\n<|im_start|>assistant\n")
+    images = "".join(image_slot(i) for i in range(image_count))
+    parts.append(f"<|im_start|>user\n{images}{user_text}<|im_end|>\n<|im_start|>assistant\n")
     if thinking:
         parts.append("<think>\n")
     else:
@@ -394,7 +645,8 @@ def answer_complete(text, thinking):
 class GGUFPromptEnhancer(PromptEnhancerBase):
     def __init__(self, model_path, system_prompt_path, context_length, max_new_tokens,
                  gpu_layers, temperature, top_p, top_k, presence_penalty,
-                 enable_thinking, plan_tokens, keep_loaded, flash_attn):
+                 enable_thinking, plan_tokens, keep_loaded, flash_attn,
+                 mmproj_path=None, image_megapixels=None, task=TASK_T2I):
         self.model_path = model_path
         self.system_prompt_path = system_prompt_path
         self.context_length = context_length
@@ -408,6 +660,9 @@ class GGUFPromptEnhancer(PromptEnhancerBase):
         self.plan_tokens = plan_tokens
         self.keep_loaded = keep_loaded
         self.flash_attn = flash_attn
+        self.mmproj_path = mmproj_path
+        self.image_megapixels = image_megapixels or DEFAULT_LLM_IMAGE_MP
+        self.task = task
 
     def _system_prompt(self):
         if not self.system_prompt_path:
@@ -424,28 +679,29 @@ class GGUFPromptEnhancer(PromptEnhancerBase):
             self.model_path, self.system_prompt_path, sp_stamp, self.context_length,
             self.max_new_tokens, self.temperature, self.top_p, self.top_k,
             self.presence_penalty, self.enable_thinking, self.plan_tokens,
+            self.mmproj_path, self.image_megapixels, self.task,
         ])
 
-    def _stream(self, llm, prompt, max_tokens, sampling, pbar, stop_when):
-        """Generate from a fresh state. stop_when(text, n_tokens) -> True ends
-        the stream early. Returns (text, n_tokens, finish_reason)."""
-        n_prompt = len(llm.tokenize(prompt.encode("utf-8"), add_bos=False, special=True))
+    def _check_room(self, n_prompt, what="prompt"):
         room = self.context_length - n_prompt
         if room < 256:
             raise RuntimeError(
-                f"The prompt is {n_prompt} tokens, leaving only {max(room, 0)} of the "
-                f"{self.context_length}-token context for the answer. Increase "
-                f"context_length on the Prompt Enhancer Loader.")
-        budget = min(max_tokens, room)
-        _reset_runtime(llm)
+                f"The {what} is about {n_prompt} tokens, leaving only {max(room, 0)} of the "
+                f"{self.context_length}-token context for the answer. Increase context_length "
+                f"on the Prompt Enhancer Loader"
+                + (", or lower llm_image_megapixels / connect fewer images." if what != "prompt" else "."))
+        return room
+
+    @staticmethod
+    def _consume(chunks, extract, pbar, stop_when):
+        """Read a token stream. extract(chunk) -> (piece, finish_reason)."""
         pieces, n_tokens, finish = [], 0, None
         started = time.perf_counter()
-        for chunk in llm.create_completion(prompt, max_tokens=budget, stream=True, **sampling):
-            if model_management.processing_interrupted():
+        for chunk in chunks:
+            if interrupted():
                 break
-            choice = chunk["choices"][0]
-            piece = choice.get("text") or ""
-            finish = choice.get("finish_reason") or finish
+            piece, fin = extract(chunk)
+            finish = fin or finish
             if piece:
                 pieces.append(piece)
                 n_tokens += 1
@@ -453,17 +709,69 @@ class GGUFPromptEnhancer(PromptEnhancerBase):
                 if stop_when("".join(pieces), n_tokens):
                     finish = "early"
                     break
-        model_management.throw_exception_if_processing_interrupted()
+        check_interrupted()
         elapsed = time.perf_counter() - started
-        dprint(f"GPromptsEnhanced: {n_tokens} tokens in {elapsed:.1f}s "
+        log.info(f"GPromptsEnhanced: {n_tokens} tokens in {elapsed:.1f}s "
                f"({n_tokens / elapsed if elapsed else 0:.0f} tok/s), finish={finish}")
         return "".join(pieces), n_tokens, finish
 
-    def enhance(self, user_text, seed):
+    def _stream(self, llm, prompt, max_tokens, sampling, pbar, stop_when):
+        """Generate from a fresh state. stop_when(text, n_tokens) -> True ends
+        the stream early. Returns (text, n_tokens, finish_reason)."""
+        n_prompt = len(llm.tokenize(prompt.encode("utf-8"), add_bos=False, special=True))
+        budget = min(max_tokens, self._check_room(n_prompt))
+        _reset_runtime(llm)
+
+        def extract(chunk):
+            choice = chunk["choices"][0]
+            return choice.get("text") or "", choice.get("finish_reason")
+        return self._consume(llm.create_completion(prompt, max_tokens=budget, stream=True, **sampling),
+                             extract, pbar, stop_when)
+
+    def _stream_mm(self, llm, prompt, max_tokens, sampling, pbar, stop_when, uris, image_tokens):
+        """Like _stream, with images: the prompt's image slots become image parts
+        and go through the multimodal handler (pass-through template)."""
+        text_only = IMAGE_SLOT_RE.sub("", prompt)
+        n_prompt = len(llm.tokenize(text_only.encode("utf-8"), add_bos=False, special=True))
+        budget = min(max_tokens, self._check_room(n_prompt + image_tokens, "prompt with images"))
+        parts, pos = [], 0
+        for m in IMAGE_SLOT_RE.finditer(prompt):
+            if m.start() > pos:
+                parts.append({"type": "text", "text": prompt[pos:m.start()]})
+            parts.append({"type": "image_url", "image_url": {"url": uris[int(m.group(1))]}})
+            pos = m.end()
+        if pos < len(prompt):
+            parts.append({"type": "text", "text": prompt[pos:]})
+        _reset_runtime(llm)
+
+        def extract(chunk):
+            choice = chunk["choices"][0]
+            delta = choice.get("delta") or choice.get("message") or {}
+            return delta.get("content") or "", choice.get("finish_reason")
+        chunks = llm.create_chat_completion(messages=[{"role": "user", "content": parts}],
+                                            max_tokens=budget, stream=True, **sampling)
+        return self._consume(chunks, extract, pbar, stop_when)
+
+    def uses_local_gpu(self, has_images):
+        return self.gpu_layers != 0
+
+    def gpu_in_process(self, has_images):
+        return self.gpu_layers != 0
+
+    def enhance(self, user_text, seed, images=None):
+        with _LLM_LOCK:
+            return self._enhance(user_text, seed, images)
+
+    def _enhance(self, user_text, seed, images=None):
         _require_llama_cpp()
+        images = list(images or [])
+        if images and not self.mmproj_path:
+            raise RuntimeError("Images need a vision projector: use Prompt Enhancer Loader "
+                               "(GGUF, edit) with its mmproj file.")
         system_prompt = self._system_prompt()
         thinking = self.enable_thinking
-        llm = _get_llm(self.model_path, self.context_length, self.gpu_layers, self.flash_attn)
+        llm = _get_llm(self.model_path, self.context_length, self.gpu_layers, self.flash_attn,
+                       self.mmproj_path)
 
         sampling = {
             "temperature": self.temperature,
@@ -478,15 +786,25 @@ class GGUFPromptEnhancer(PromptEnhancerBase):
         stop_on_interrupt = getattr(llama_cpp, "StoppingCriteriaList", None)
         if stop_on_interrupt is not None:
             sampling["stopping_criteria"] = stop_on_interrupt(
-                [lambda _ids, _logits: model_management.processing_interrupted()])
-        sampling = _adapt_sampling(llm, sampling)
-        pbar = comfy.utils.ProgressBar(self.max_new_tokens)
+                [lambda _ids, _logits: interrupted()])
+        pbar = progress_bar(self.max_new_tokens)
+
+        if images:
+            prepared = [prepared_image(t, self.image_megapixels) for t in images]
+            uris = ["data:image/jpeg;base64," + b64 for b64, _n in prepared]
+            image_tokens = sum(n for _b64, n in prepared)
+            chat_sampling = _adapt_sampling(llm.create_chat_completion, sampling)
+            stream = lambda prompt, max_tokens, stop_when: self._stream_mm(
+                llm, prompt, max_tokens, chat_sampling, pbar, stop_when, uris, image_tokens)
+        else:
+            text_sampling = _adapt_sampling(llm.create_completion, sampling)
+            stream = lambda prompt, max_tokens, stop_when: self._stream(
+                llm, prompt, max_tokens, text_sampling, pbar, stop_when)
 
         try:
             raw, finish, contract = run_raw_generation(
-                lambda prompt, max_tokens, stop_when: self._stream(
-                    llm, prompt, max_tokens, sampling, pbar, stop_when),
-                system_prompt, user_text, thinking, self.plan_tokens, self.max_new_tokens)
+                stream, system_prompt, user_text, thinking, self.plan_tokens,
+                self.max_new_tokens, image_count=len(images))
         finally:
             if not self.keep_loaded:
                 unload_llm()
@@ -494,7 +812,7 @@ class GGUFPromptEnhancer(PromptEnhancerBase):
 
 
 def run_raw_generation(stream_raw, system_prompt, user_text, thinking, plan_tokens,
-                       max_new_tokens):
+                       max_new_tokens, image_count=0):
     """The raw-prompt flow shared by every backend that accepts a full prompt
     string (GGUF, and the API loader's raw completion modes).
 
@@ -510,7 +828,7 @@ def run_raw_generation(stream_raw, system_prompt, user_text, thinking, plan_toke
         # pre-filled, so check the JSON with that opening glued back on.
         return contract and answer_complete(restore_prefill(text), False)
 
-    prompt = build_chat_prompt(system_prompt, user_text, thinking, contract)
+    prompt = build_chat_prompt(system_prompt, user_text, thinking, contract, image_count)
     if not thinking:
         raw, _n, finish = stream_raw(prompt, max_new_tokens, lambda t, n: done(t))
         if contract:
@@ -526,7 +844,7 @@ def run_raw_generation(stream_raw, system_prompt, user_text, thinking, plan_toke
     if "</think>" not in raw and plan_tokens >= 0 and finish == "early" and raw.strip():
         # Plan cut at the budget: hand it back, closed, and ask for the answer.
         plan = raw.rstrip()
-        dprint(f"GPromptsEnhanced: plan capped at {used} tokens; writing the answer")
+        log.info(f"GPromptsEnhanced: plan capped at {used} tokens; writing the answer")
         answer_prompt = prompt + plan + "\n</think>\n\n" + (ANSWER_PREFILL if contract else "")
         answer, _n, finish = stream_raw(answer_prompt, max(256, max_new_tokens - used),
                                         lambda t, n: done(t))
@@ -546,10 +864,14 @@ def finalize_result(raw, finish, thinking, contract, max_new_tokens):
     if not result.prompt:
         raise RuntimeError(f"The LLM returned no prompt. Raw output:\n{raw[-2000:]}")
     if contract and not result.parse_ok:
-        print("GPromptsEnhanced: warning - the answer was not the expected JSON; using the raw "
-              "answer text. Usual causes: a base model instead of a PE model, the wrong "
-              "system prompt for the model, or output cut off by the context length.")
-    dprint(f"GPromptsEnhanced: parse_ok={result.parse_ok}, wh_ratio={result.wh_ratio!r}")
+        answer = raw.rpartition("</think>")[2].strip() if "</think>" in raw else raw.strip()
+        excerpt = answer if len(answer) <= 700 else answer[:500] + " ... " + answer[-150:]
+        log.warning("GPromptsEnhanced: the answer was not the expected JSON; using the raw "
+              "answer text. Usual causes: the model declined or answered in prose, a base "
+              "model instead of a PE model, the wrong system prompt for the model, or output "
+              "cut off by max_new_tokens or the context length. The answer was:\n"
+              + excerpt)
+    log.debug(f"GPromptsEnhanced: parse_ok={result.parse_ok}, wh_ratio={result.wh_ratio!r}")
     return result
 
 
@@ -660,6 +982,114 @@ def canvas_size(wh_ratio, megapixels, multiple=SIZE_MULTIPLE):
     return width, height
 
 
+# ----------------------------------------------------------------------------
+# Reference images (image edit)
+# ----------------------------------------------------------------------------
+LLM_IMAGE_MEGAPIXELS = ["0.25", "0.5", "1.0", "2.0"]
+DEFAULT_LLM_IMAGE_MP = "0.5"
+MAX_IMAGES = 16          # same as Text Encode Qwen Image 2.1
+LLM_PIXELS_PER_TOKEN = 32 * 32   # Qwen vision: 16px patches merged 2x2
+
+
+def images_from_autogrow(images):
+    """Autogrow dict {'image_1': IMAGE, ...} -> list of [1,H,W,C] tensors, in
+    socket order, skipping empty sockets - the same order Text Encode Qwen
+    Image 2.1 uses, so <image1> means the same picture to both nodes."""
+    if not images:
+        return []
+
+    def index(name):
+        digits = re.findall(r"\d+", name)
+        return int(digits[-1]) if digits else 0
+    return [images[k][:1] for k in sorted(images, key=index) if images[k] is not None]
+
+
+def images_fingerprint(images):
+    """Stable id for a set of images (cache key: a new image means a new LLM call)."""
+    if not images:
+        return ""
+    h = hashlib.blake2b(digest_size=16)
+    for t in images:
+        arr = t.detach().cpu().contiguous().numpy()
+        h.update(str(arr.shape).encode())
+        h.update(arr.tobytes())
+    return h.hexdigest()
+
+
+_PREPARED = {}          # (image fingerprint, megapixels) -> (jpeg base64, token estimate)
+_PREPARED_MAX = 32
+
+
+def prepared_image(image, megapixels):
+    """Downscaled JPEG (base64) of a reference image and its approximate token
+    count, cached: the same reference is sent on every run of a batch, and
+    identical bytes also let a server reuse its own cache of the image."""
+    key = (images_fingerprint([image]), str(megapixels))
+    hit = _PREPARED.get(key)
+    if hit is None:
+        pil = image_for_llm(image, megapixels)
+        hit = (pil_to_jpeg_b64(pil), estimate_image_tokens(pil))
+        if len(_PREPARED) >= _PREPARED_MAX:
+            _PREPARED.pop(next(iter(_PREPARED)))
+        _PREPARED[key] = hit
+    return hit
+
+
+def image_for_llm(image, megapixels):
+    """IMAGE tensor [1,H,W,C] -> RGB PIL image with at most ~megapixels pixels
+    (never upscaled). Alpha is composited over white, as the encode node does
+    for its vision tower."""
+    arr = image[0].detach().cpu().float().numpy()
+    if arr.shape[-1] == 4:
+        arr = arr[..., :3] * arr[..., 3:] + (1.0 - arr[..., 3:])
+    elif arr.shape[-1] == 1:
+        arr = np.repeat(arr, 3, axis=-1)
+    arr = (np.clip(arr[..., :3], 0.0, 1.0) * 255.0).round().astype(np.uint8)
+    pil = PILImage.fromarray(arr, "RGB")
+    w, h = pil.size
+    try:
+        target = float(megapixels) * 1024 * 1024
+    except (TypeError, ValueError):
+        target = float(DEFAULT_LLM_IMAGE_MP) * 1024 * 1024
+    if w * h > target:
+        scale = math.sqrt(target / (w * h))
+        pil = pil.resize((max(32, round(w * scale)), max(32, round(h * scale))), PILImage.LANCZOS)
+    return pil
+
+
+def pil_to_jpeg_b64(pil, quality=92):
+    buf = BytesIO()
+    pil.save(buf, format="JPEG", quality=quality)
+    return base64.b64encode(buf.getvalue()).decode("ascii")
+
+
+def estimate_image_tokens(pil):
+    w, h = pil.size
+    return math.ceil(w / 32) * math.ceil(h / 32) + 2
+
+
+def follow_index(ratio_follow, count):
+    """'image2', '<image2>', '2', 'Picture 2' -> 1; None if it names no connected image."""
+    m = re.search(r"(\d+)", ratio_follow or "")
+    if m:
+        i = int(m.group(1)) - 1
+        if 0 <= i < count:
+            return i
+    return None
+
+
+def edit_canvas(result, images, megapixels):
+    """Width/height for an edit: the shape of the image the model says to
+    follow (ratio_follow), else its wh_ratio, else the first image's shape."""
+    i = follow_index(result.ratio_follow, len(images))
+    if i is None and not ratio_to_pair(result.wh_ratio):
+        i = 0
+    if i is not None:
+        h, w = int(images[i].shape[1]), int(images[i].shape[2])
+        return canvas_size(f"{w}:{h}", megapixels)
+    return canvas_size(result.wh_ratio, megapixels)
+
+
 def preserve_hint(anchors):
     words = []
     for a in anchors:
@@ -767,10 +1197,186 @@ class GPromptEnhancerLoaderGGUF(io.ComfyNode):
         return io.NodeOutput(enhancer)
 
 
+
+NO_MMPROJ = "(no mmproj .gguf files in models/LLM)"
+
+
+class GPromptEnhancerLoaderGGUFEdit(io.ComfyNode):
+    @classmethod
+    def define_schema(cls):
+        ggufs = list_llm_files(MODEL_EXTENSIONS)
+        models = [f for f in ggufs if "mmproj" not in f.lower()] or [NO_MODELS]
+        mmprojs = [f for f in ggufs if "mmproj" in f.lower()] or ggufs or [NO_MMPROJ]
+        prompts = list_llm_files(SYSTEM_PROMPT_EXTENSIONS) or [NO_SYSTEM_PROMPTS]
+        return io.Schema(
+            node_id="GPromptEnhancerLoaderGGUFEdit",
+            display_name="Prompt Enhancer Loader (GGUF, edit)",
+            category="gprompts/enhancer",
+            description=(
+                "Image-edit prompt rewriter (e.g. Qwen-Image-2.1 PE-I2I) as a GGUF plus its "
+                "vision projector (mmproj), from models/LLM. The rewriter sees the reference "
+                "images connected to 'Dynamic Prompts with Enhancer'. Runs in-process with "
+                "llama-cpp-python."
+            ),
+            search_aliases=["edit prompt enhancer", "i2i prompt rewriter", "mmproj"],
+            inputs=[
+                io.Combo.Input("model", options=models,
+                               tooltip="Edit rewriter GGUF in models/LLM (e.g. pe_i2i_heretic-Q4_K_M.gguf)."),
+                io.Combo.Input("mmproj", options=mmprojs,
+                               tooltip="The vision projector shipped with the model "
+                                       "(…mmproj….gguf). Lets the LLM see the images."),
+                io.Combo.Input("system_prompt", options=prompts,
+                               tooltip="The edit model's own system prompt file (about 18 KB for "
+                                       "Qwen-Image-2.1 PE-I2I) - not the text-to-image one."),
+                io.Int.Input("context_length", default=16384, min=2048, max=262144, step=1024,
+                             tooltip="Must fit the system prompt, the images and the answer."),
+                io.Int.Input("max_new_tokens", default=8192, min=256, max=65536, step=256),
+                io.Int.Input("gpu_layers", default=-1, min=-1, max=999,
+                             tooltip="Layers on the GPU. -1 = all, 0 = CPU only."),
+                io.Float.Input("temperature", default=1.0, min=0.0, max=2.0, step=0.05),
+                io.Float.Input("top_p", default=0.95, min=0.0, max=1.0, step=0.01),
+                io.Int.Input("top_k", default=20, min=0, max=200),
+                io.Float.Input("presence_penalty", default=0.0, min=0.0, max=2.0, step=0.05,
+                               tooltip="Qwen's settings use 0 for the edit rewriter (1.5 is for "
+                                       "text-to-image)."),
+                io.Boolean.Input("enable_thinking", default=True),
+                io.Int.Input("plan_tokens", default=800, min=-1, max=16384, step=100,
+                             tooltip="Cap on thinking before the plan is handed back for the "
+                                     "answer. -1 = no cap. Edits with several images plan long; "
+                                     "the cap matters more here."),
+                io.Combo.Input("llm_image_megapixels", options=LLM_IMAGE_MEGAPIXELS,
+                               default=DEFAULT_LLM_IMAGE_MP,
+                               tooltip="Images are downscaled to about this size before the LLM "
+                                       "sees them (~512 tokens each at 0.5). The encode node still "
+                                       "gets the originals."),
+                io.Boolean.Input("keep_loaded", default=True),
+                io.Boolean.Input("flash_attn", default=True, advanced=True),
+            ],
+            outputs=[PromptEnhancerType.Output("enhancer", display_name="enhancer")],
+        )
+
+    @classmethod
+    def validate_inputs(cls, model, mmproj, system_prompt):
+        if model == NO_MODELS or resolve_llm_file(model) is None:
+            return f"GGUF model not found in models/LLM: {model}"
+        if mmproj == NO_MMPROJ or resolve_llm_file(mmproj) is None:
+            return f"mmproj file not found in models/LLM: {mmproj}"
+        if mmproj == model:
+            return "mmproj must be the vision projector file, not the model itself"
+        if system_prompt == NO_SYSTEM_PROMPTS or resolve_llm_file(system_prompt) is None:
+            return f"System prompt file not found in models/LLM: {system_prompt}"
+        return True
+
+    @classmethod
+    def execute(cls, model, mmproj, system_prompt, context_length, max_new_tokens, gpu_layers,
+                temperature, top_p, top_k, presence_penalty, enable_thinking, plan_tokens,
+                llm_image_megapixels, keep_loaded, flash_attn=True) -> io.NodeOutput:
+        enhancer = GGUFPromptEnhancer(
+            model_path=resolve_llm_file(model), system_prompt_path=resolve_llm_file(system_prompt),
+            context_length=context_length, max_new_tokens=max_new_tokens, gpu_layers=gpu_layers,
+            temperature=temperature, top_p=top_p, top_k=top_k, presence_penalty=presence_penalty,
+            enable_thinking=enable_thinking, plan_tokens=plan_tokens, keep_loaded=keep_loaded,
+            flash_attn=flash_attn, mmproj_path=resolve_llm_file(mmproj),
+            image_megapixels=llm_image_megapixels, task=TASK_EDIT)
+        if not keep_loaded:
+            unload_llm()
+        return io.NodeOutput(enhancer)
+
+
+class GPromptEnhancerPair(io.ComfyNode):
+    @classmethod
+    def define_schema(cls):
+        return io.Schema(
+            node_id="GPromptEnhancerPair",
+            display_name="Enhancer Pair",
+            category="gprompts/enhancer",
+            description=(
+                "Combines a text-to-image enhancer and an image-edit enhancer into one, so a "
+                "workflow can do both: runs with reference images use the edit one, runs "
+                "without use the text-to-image one. Either can be a GGUF or API loader."
+            ),
+            search_aliases=["enhancer switch", "t2i i2i enhancer"],
+            inputs=[
+                PromptEnhancerType.Input("text_enhancer", optional=True,
+                                         tooltip="A text-to-image loader."),
+                PromptEnhancerType.Input("edit_enhancer", optional=True,
+                                         tooltip="An image-edit loader."),
+            ],
+            outputs=[PromptEnhancerType.Output("enhancer", display_name="enhancer")],
+        )
+
+    @classmethod
+    def execute(cls, text_enhancer=None, edit_enhancer=None) -> io.NodeOutput:
+        if text_enhancer is None and edit_enhancer is None:
+            raise RuntimeError("Enhancer Pair: connect at least one enhancer.")
+        if text_enhancer is not None and getattr(text_enhancer, "task", TASK_T2I) != TASK_T2I:
+            raise RuntimeError(f"Enhancer Pair: text_enhancer is a {text_enhancer.task} loader; "
+                               f"it needs a text-to-image one.")
+        if edit_enhancer is not None and getattr(edit_enhancer, "task", TASK_T2I) != TASK_EDIT:
+            raise RuntimeError(f"Enhancer Pair: edit_enhancer is a {edit_enhancer.task} loader; "
+                               f"it needs an image-edit one.")
+        return io.NodeOutput(EnhancerPair(text_enhancer, edit_enhancer))
+
+
 # Per-node state. V3 nodes are stateless classes, so the dynamic prompt engine
 # (iteration counter, sequential combinations, wildcard cache) and the cached
 # LLM result live here, keyed by the node's unique_id.
 _NODE_STATE = {}
+_WARNED = {}
+
+
+class _Prefetch:
+    """The next run's rewrite, generated on a worker thread."""
+
+    def __init__(self, iteration, expanded, values, seed, work):
+        self.iteration, self.expanded, self.values, self.seed = iteration, expanded, values, seed
+        self.cancel = threading.Event()
+        self.done = threading.Event()
+        self.result = self.error = None
+        self.started = time.perf_counter()
+        self.thread = threading.Thread(target=self._run, args=(work,), daemon=True,
+                                       name="gprompts-prefetch")
+        self.thread.start()
+
+    def _run(self, work):
+        _BACKGROUND.cancel = self.cancel
+        try:
+            self.result = work()
+        except BaseException as e:          # reported by whoever collects it
+            self.error = e
+        finally:
+            _BACKGROUND.cancel = None
+            self.done.set()
+
+    def stop(self):
+        """Not needed any more. Don't wait: a local model stops at its next token
+        (and holds its lock until then); an API request stops at its next chunk."""
+        self.cancel.set()
+
+    def collect(self):
+        """Wait for the result (None if it failed); the user's Cancel still works."""
+        while not self.done.wait(0.1):
+            if model_management.processing_interrupted():
+                self.stop()
+                model_management.throw_exception_if_processing_interrupted()
+        if self.error is not None:
+            if not isinstance(self.error, PrefetchCancelled):
+                log.warning(f"GPromptsEnhanced: prefetched rewrite failed ({self.error}); retrying now")
+            return None
+        return self.result
+
+
+def _stop_prefetch(state):
+    pf = state.pop("prefetch", None) if state else None
+    if pf is not None:
+        pf.stop()
+
+
+ENHANCE_EVERY_RUN = "every run"
+ENHANCE_ONCE = "once, then substitute"
+ENHANCE_MODES = [ENHANCE_EVERY_RUN, ENHANCE_ONCE]
+PREFETCH_AUTO, PREFETCH_ON, PREFETCH_OFF = "auto", "on", "off"
+PREFETCH_MODES = [PREFETCH_AUTO, PREFETCH_ON, PREFETCH_OFF]
 
 
 class GPromptsEnhanced(io.ComfyNode):
@@ -782,15 +1388,19 @@ class GPromptsEnhanced(io.ComfyNode):
             display_name="Dynamic Prompts with Enhancer",
             category="gprompts/enhancer",
             description=(
-                "Dynamic Prompts plus an LLM prompt enhancer. The first expansion is rewritten "
-                "by the LLM once; later expansions are made by swapping their chosen values "
-                "into that rewrite, so a whole batch costs a single LLM call. Changing the "
-                "text, delimiter style, seed or enhancer settings starts over with a new LLM call."
+                "Dynamic Prompts plus an LLM prompt enhancer. 'every run' sends each run's "
+                "expansion to the LLM. 'once, then substitute' rewrites only the first "
+                "expansion and swaps later runs' chosen values into that rewrite: one LLM call "
+                "for the whole batch, but it breaks when the LLM rewords a value (dinosaur -> "
+                "sauropod). Changing the text, delimiter style, mode, enhancer settings or "
+                "reference images starts the batch over; the seed does not."
             ),
             search_aliases=["gprompts enhancer", "dynamic prompts llm", "prompt enhancer"],
             inputs=[
                 PromptEnhancerType.Input("enhancer",
-                                         tooltip="From 'Prompt Enhancer Loader (GGUF)'"),
+                                         tooltip="From a Prompt Enhancer Loader (GGUF or API; "
+                                                 "text-to-image, or edit when images are "
+                                                 "connected) or an Enhancer Pair."),
                 io.String.Input("text", multiline=True, default="",
                                 tooltip="Dynamic prompt, same syntax as Dynamic Prompts: {a|b} random, "
                                         "{{a|b}} sequential, __wildcard__, registers {{0 a|b}} / {{0}}."),
@@ -798,21 +1408,51 @@ class GPromptsEnhanced(io.ComfyNode):
                                default=DynamicPromptEngine.DEFAULT_DELIM_STYLE,
                                tooltip="'curly { }' or 'angle < >' (for JSON prompts)."),
                 io.Int.Input("seed", default=0, min=0, max=0xFFFFFFFFFFFFFFFF,
-                             tooltip="Seed for random blocks and for the LLM. 0 = unseeded."),
+                             tooltip="Seed for random blocks (seed + run number, as in Dynamic Prompts) "
+                                     "and for the batch's LLM call. 0 = unseeded. Changing it does "
+                                     "not restart the batch."),
                 io.Boolean.Input("preserve_dynamic_words", default=True,
-                                 tooltip="Ask the LLM to keep the first expansion's chosen words "
-                                         "verbatim, so later expansions can be swapped in. If the "
-                                         "LLM rewords a word anyway, that variation is skipped "
-                                         "(see the console)."),
+                                 tooltip="'once, then substitute' only: ask the LLM to keep the "
+                                         "first expansion's chosen words verbatim, so later "
+                                         "expansions can be swapped in. If the LLM rewords a word "
+                                         "anyway, that variation is skipped (see the console)."),
                 io.Combo.Input("target_megapixels", options=MEGAPIXEL_OPTIONS,
                                default=DEFAULT_MEGAPIXELS,
                                tooltip="Pixel budget for the width/height outputs, at the LLM's "
-                                       "recommended aspect ratio (1:1 if it gave none). 1.0 = "
+                                       "recommended aspect ratio (1:1 if it gave none; for edits, "
+                                       "the shape of the image it names in ratio_follow). 1.0 = "
                                        "1024x1024-sized; 4.0 = Qwen-Image 2.1's native 2K "
                                        "(2048x2048-sized). Sides are multiples of 16."),
                 io.String.Input("computed_prompt", multiline=True, default="", optional=True,
                                 extra_dict={"readonly": True},
                                 tooltip="The final prompt from the last run (read-only)."),
+                io.Combo.Input("enhance", options=ENHANCE_MODES, default=ENHANCE_EVERY_RUN,
+                               tooltip="'every run': the LLM rewrites each run's expansion (one "
+                                       "LLM call per image; always correct). 'once, then "
+                                       "substitute': one LLM call per batch, later runs swap "
+                                       "their values into the first rewrite (fast, but fails "
+                                       "when the LLM rewords a value, e.g. dinosaur -> sauropod)."),
+                io.Combo.Input("prefetch_next", options=PREFETCH_MODES, default=PREFETCH_AUTO,
+                               tooltip="'every run' only: as soon as a run's prompt is out, start "
+                                       "rewriting the next run's prompt in the background, so "
+                                       "the LLM works while the image renders. auto = on for an "
+                                       "API on another machine and a CPU-only GGUF (gpu_layers "
+                                       "0); off for an API server on this machine (it shares the "
+                                       "GPU). on = also for a server on this machine. A GGUF on "
+                                       "the GPU never prefetches (it can crash ComfyUI). After "
+                                       "the last run of a batch one rewrite goes unused (a "
+                                       "wasted call on paid APIs)."),
+                io.Autogrow.Input(
+                    "images",
+                    template=io.Autogrow.TemplateNames(
+                        io.Image.Input("image"),
+                        names=[f"image_{i}" for i in range(1, MAX_IMAGES + 1)],
+                        min=0,
+                    ),
+                    tooltip="Reference images for image editing, shown to the LLM. Wire the same "
+                            "images, in the same order, to Text Encode Qwen Image 2.1. Refer to "
+                            "them in the text as <image1>, <image2>, ...",
+                ),
             ],
             outputs=[
                 io.String.Output("text", display_name="text",
@@ -837,6 +1477,9 @@ class GPromptsEnhanced(io.ComfyNode):
                                       "Text Encode Qwen Image 2.1 in edit workflows. For "
                                       "text-to-image use width/height into an Empty Latent Image "
                                       "instead: that node's own latent is always square."),
+                io.String.Output("ratio_follow", display_name="ratio_follow",
+                                 tooltip="Edit: which reference image's shape the output keeps "
+                                         "(e.g. image1), as chosen by the LLM. Empty otherwise."),
             ],
             hidden=[io.Hidden.unique_id, io.Hidden.prompt, io.Hidden.extra_pnginfo],
         )
@@ -846,9 +1489,50 @@ class GPromptsEnhanced(io.ComfyNode):
         # Every queue advances the iteration, like Dynamic Prompts: always run.
         return float("nan")
 
+    @staticmethod
+    def _prefetch_wanted(mode, enhancer, has_images):
+        if mode == PREFETCH_OFF:
+            return False
+        if enhancer.gpu_in_process(has_images):
+            # Even when forced on: a GPU error in llama.cpp aborts ComfyUI.
+            if mode == PREFETCH_ON and not _WARNED.get("gpu_prefetch"):
+                _WARNED["gpu_prefetch"] = True
+                log.warning("GPromptsEnhanced: prefetch_next is on, but the GGUF runs on this "
+                      "machine's GPU; running it in the background next to the image model "
+                      "can crash ComfyUI, so prefetch is skipped. Set gpu_layers to 0 (CPU) "
+                      "or use an API loader to prefetch.")
+            return False
+        if mode == PREFETCH_ON:
+            return True
+        return not enhancer.uses_local_gpu(has_images)
+
+    @staticmethod
+    def _start_prefetch(engine, text, seed, enhancer, refs):
+        """Expand the next run now (without disturbing Python's random state) and
+        start its rewrite on a worker thread."""
+        iteration = engine.current_iteration
+        saved = random.getstate()
+        try:
+            if seed > 0:
+                random.seed(seed + iteration)
+            expanded = engine.parse_dynamic_prompt(text)
+            values = list(engine.last_values)
+        finally:
+            random.setstate(saved)
+        llm_seed = seed + iteration if seed > 0 else seed
+        refs = list(refs)
+        if refs:
+            work = lambda: enhancer.enhance(expanded, llm_seed, images=refs)
+        else:
+            work = lambda: enhancer.enhance(expanded, llm_seed)
+        log.debug(f"GPromptsEnhanced: prefetching iteration {iteration}: {expanded}")
+        return _Prefetch(iteration, expanded, values, seed, work)
+
     @classmethod
     def execute(cls, enhancer, text, delimiter_style, seed, preserve_dynamic_words=True,
-                target_megapixels=DEFAULT_MEGAPIXELS, computed_prompt="") -> io.NodeOutput:
+                target_megapixels=DEFAULT_MEGAPIXELS, computed_prompt="",
+                enhance=ENHANCE_EVERY_RUN, prefetch_next=PREFETCH_AUTO,
+                images: io.Autogrow.Type = None) -> io.NodeOutput:
         unique_id = cls.hidden.unique_id
         prompt = cls.hidden.prompt
         extra_pnginfo = cls.hidden.extra_pnginfo or {}
@@ -856,9 +1540,19 @@ class GPromptsEnhanced(io.ComfyNode):
 
         if delimiter_style not in DynamicPromptEngine.DELIM_STYLES:
             delimiter_style = DynamicPromptEngine.DEFAULT_DELIM_STYLE
-        key = (text, delimiter_style, seed, bool(preserve_dynamic_words), enhancer.cache_key())
+        if enhance not in ENHANCE_MODES:
+            enhance = ENHANCE_EVERY_RUN
+        every_run = enhance == ENHANCE_EVERY_RUN
+        refs = images_from_autogrow(images)
+        enhancer.check_task(bool(refs))
+        # Like Dynamic Prompts, the seed is not part of the key: it only drives
+        # random blocks (seed + iteration). A seed set to randomize must not
+        # restart the batch, or every run would be the first expansion.
+        key = (text, delimiter_style, enhance, bool(preserve_dynamic_words) and not every_run,
+               enhancer.cache_key_for(bool(refs)), images_fingerprint(refs))
         state = _NODE_STATE.get(unique_id)
         if state is None or state["key"] != key:
+            _stop_prefetch(state)
             engine = DynamicPromptEngine()
             engine.previous_text = text
             engine.previous_delim_style = delimiter_style
@@ -867,27 +1561,58 @@ class GPromptsEnhanced(io.ComfyNode):
         engine = state["engine"]
         engine.delims = engine.DELIM_STYLES[delimiter_style]
 
-        if seed > 0:
-            random.seed(seed + engine.current_iteration)
-        expanded = engine.parse_dynamic_prompt(text)
-        values = list(engine.last_values)
         iteration = engine.current_iteration
+        pf = state.pop("prefetch", None)
+        if pf is not None and pf.iteration == iteration and seed == 0 and pf.seed == 0:
+            # Unseeded: the prefetch's random draw is as good as a new one, so use it.
+            expanded, values = pf.expanded, list(pf.values)
+        else:
+            if seed > 0:
+                random.seed(seed + iteration)
+            expanded = engine.parse_dynamic_prompt(text)
+            values = list(engine.last_values)
+        if pf is not None and (pf.iteration != iteration or pf.expanded != expanded
+                               or not every_run):
+            pf.stop()               # predicted a different prompt (e.g. the seed changed)
+            pf = None
 
-        if state["result"] is None:
+        prefetched = None
+        if pf is not None:
+            waited = time.perf_counter()
+            prefetched = pf.collect()
+            if prefetched is not None:
+                log.info(f"GPromptsEnhanced: using the rewrite prefetched during the last run "
+                      f"(waited {time.perf_counter() - waited:.1f}s of "
+                      f"{time.perf_counter() - pf.started:.1f}s)")
+
+        if prefetched is not None:
+            state["result"] = prefetched
+            state["anchors"] = values
+            final = prefetched.prompt
+        elif every_run or state["result"] is None:
             user_text = expanded
-            if preserve_dynamic_words:
+            if preserve_dynamic_words and not every_run:
                 user_text += preserve_hint(values)
-            dprint(f"GPromptsEnhanced: enhancing (iteration {iteration}): {user_text}")
-            state["result"] = enhancer.enhance(user_text, seed)
+            # every run: seed + iteration, so a repeated combination still gets a fresh,
+            # reproducible rewrite (0 stays unseeded)
+            llm_seed = seed + iteration if (every_run and seed > 0) else seed
+            log.debug(f"GPromptsEnhanced: enhancing (iteration {iteration}, {enhance}): {user_text}")
+            if refs:
+                log.debug(f"GPromptsEnhanced: with {len(refs)} reference image(s)")
+                state["result"] = enhancer.enhance(user_text, llm_seed, images=refs)
+            else:
+                state["result"] = enhancer.enhance(user_text, llm_seed)
             state["anchors"] = values
             final = state["result"].prompt
         else:
             final, warnings = substitute_values(state["result"].prompt, state["anchors"], values)
             for w in warnings:
-                print(f"GPromptsEnhanced (node {unique_id}, iteration {iteration}): {w}")
+                log.warning(f"GPromptsEnhanced (node {unique_id}, iteration {iteration}): {w}")
 
         engine.current_iteration += 1
         result = state["result"]
+        if every_run and cls._prefetch_wanted(prefetch_next, enhancer, bool(refs)):
+            state["prefetch"] = cls._start_prefetch(engine, text, seed, enhancer, refs)
 
         if workflow_id:
             promtpForId[workflow_id] = final
@@ -895,7 +1620,7 @@ class GPromptsEnhanced(io.ComfyNode):
             PromptServer.instance.send_sync("gprompts_executed",
                                             {"node_id": unique_id, "result": final})
         except Exception as e:
-            dprint(f"GPromptsEnhanced: could not update UI: {e}")
+            log.debug(f"GPromptsEnhanced: could not update UI: {e}")
         if prompt is not None and unique_id in prompt:
             node = prompt[unique_id]
             node.setdefault("inputs", {})["computed_prompt"] = final
@@ -904,16 +1629,24 @@ class GPromptsEnhanced(io.ComfyNode):
             meta["dynamic_prompt"] = expanded
             node["_meta"] = meta
 
-        width, height = canvas_size(result.wh_ratio, target_megapixels)
+        if refs:
+            width, height = edit_canvas(result, refs, target_megapixels)
+        else:
+            width, height = canvas_size(result.wh_ratio, target_megapixels)
         return io.NodeOutput(final, expanded, final, seed, text, result.wh_ratio,
-                             width, height, square_resolution(target_megapixels))
+                             width, height, square_resolution(target_megapixels),
+                             result.ratio_follow)
 
 
 ENHANCED_NODES = {
     "GPromptEnhancerLoaderGGUF": GPromptEnhancerLoaderGGUF,
+    "GPromptEnhancerLoaderGGUFEdit": GPromptEnhancerLoaderGGUFEdit,
+    "GPromptEnhancerPair": GPromptEnhancerPair,
     "GPromptsEnhanced": GPromptsEnhanced,
 }
 ENHANCED_NODE_DISPLAY_NAME_MAPPINGS = {
     "GPromptEnhancerLoaderGGUF": "Prompt Enhancer Loader (GGUF)",
+    "GPromptEnhancerLoaderGGUFEdit": "Prompt Enhancer Loader (GGUF, edit)",
+    "GPromptEnhancerPair": "Enhancer Pair",
     "GPromptsEnhanced": "Dynamic Prompts with Enhancer",
 }
