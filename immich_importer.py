@@ -16,10 +16,34 @@ from pathlib import Path
 from datetime import datetime
 import time
 import json
+import logging
+import re
+import math
+
+# ComfyUI adds an "is_changed" entry to each node of the prompt it hands to
+# nodes. Nodes that must always re-run (GPrompts, Dynamic Prompts with
+# Enhancer) report NaN there, and NaN is not valid JSON. That value is
+# execution-cache bookkeeping, not part of the workflow, so it is dropped here,
+# and any other non-finite float becomes null. Works on a copy; ComfyUI's own
+# dict is never modified.
+def json_safe(obj):
+    if isinstance(obj, dict):
+        return {k: json_safe(v) for k, v in obj.items() if k != "is_changed"}
+    if isinstance(obj, (list, tuple)):
+        return [json_safe(v) for v in obj]
+    if isinstance(obj, float) and not math.isfinite(obj):
+        return None
+    return obj
+
+_log = logging.getLogger("gprompts.immich")
+_PROBLEM = re.compile(r"\u2717|\bfailed\b|\berror\b|unexpected status|status:\s*[45]\d\d|response:", re.I)
+
 
 def dprint(s):
-    print(f"ImmichImporter {s}")
-    pass
+    """Progress detail at debug level; failures as warnings, so they always show."""
+    s = str(s)
+    level = logging.WARNING if _PROBLEM.search(s) else logging.DEBUG
+    _log.log(level, "ImmichImporter %s", s)
 
 class ImmichImporter:
     def __init__(self, server_url, api_key=None,importer_name = "ImmichImporter"):
@@ -140,7 +164,7 @@ class ImmichImporter:
                 data = {
                 'asset_id': asset_id,
                 'album_id': album_id,
-                'info' : info
+                'info' : json_safe(info)
                 }
 
                 response = self.session.post(url, json=data, headers=headers)
@@ -368,7 +392,7 @@ class ImmichImporter:
                     # Add ComfyUI workflow if provided
                     if comfy_workflow:
                         xmp_template += f'''
-        <gadzoinks:comfyui_workflow><![CDATA[{json.dumps(comfy_workflow)}]]></gadzoinks:comfyui_workflow>'''
+        <gadzoinks:comfyui_workflow><![CDATA[{json.dumps(json_safe(comfy_workflow))}]]></gadzoinks:comfyui_workflow>'''
                 # Close XML
                 xmp_template += '''
         </rdf:Description>
@@ -570,6 +594,8 @@ def list_albums(importer):
     print(f"\n{'='*60}")
 
 def main():
+    # Command-line use: show all progress messages, as before.
+    logging.basicConfig(level=logging.DEBUG, format="%(message)s")
     parser = argparse.ArgumentParser(
         description='Import local photos to Immich server',
         formatter_class=argparse.RawDescriptionHelpFormatter,

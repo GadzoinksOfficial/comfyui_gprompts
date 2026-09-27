@@ -13,6 +13,9 @@ from comfy_extras.nodes_video import SaveVideo
 from comfy_extras.nodes_audio import SaveAudioAdvanced
 from .immich_importer import ImmichImporter
 from .comfyui_gprompts import get_last_prompt,parse_bool_setting,add_note_node_to_workflow,extract_computed_prompt,get_missing,get_immich_settings,get_settings_file,apply_settings,dprint,masked_settings
+from .common import get_logger
+
+log = get_logger("immich")
 from  .common import  pil_to_comfy, cover_from_tensor, fallback_cover,fallback_cover_os
 #
 #
@@ -151,7 +154,7 @@ class GSaveAudioToImmich(SaveAudioAdvanced):
         user_tags = list({tag.strip() for tag in all_tags if tag.strip()})
         structured_tags = user_tags # future: extract some tags from metadata
 
-        dprint(f"saved:{saved}")
+        dprint(f"saved:{saved.get('ui') if isinstance(saved, dict) else saved}")
         dprint(f"imm_filename:{imm_filename}")
         dprint(f"imm_fullpath:{imm_fullpath}")
         # Validation, I am putting this after the image is saved to file system
@@ -163,10 +166,9 @@ class GSaveAudioToImmich(SaveAudioAdvanced):
         url = f"http://{server}:{port}"
         missing = get_missing(settings)
         if missing:
-            print("\nIMMICH CONFIGURATION ERROR")
-            print(f"Save Image to Immich Server Node Missing: {', '.join(missing)}")
-            print("Please configure in Settings:Gadzoinks")
-            print(f"settings snapshot:{masked_settings(settings)}")
+            log.error("IMMICH CONFIGURATION ERROR - Save to Immich Server node is missing: %s. "
+                      "Please configure in Settings > Gadzoinks.", ", ".join(missing))
+            log.debug("settings snapshot: %s", masked_settings(settings))
             # Generate an error so the user gets alerted to what is wrong
             error_msg = f": Missing {', '.join(missing)}. Open Settings, Gadzoinks to configure."
             raise ValueError(error_msg)
@@ -315,7 +317,7 @@ class GSaveVideoToImmich(SaveVideo):
         all_tags = (tags + ',' + basetags).split(',')
         user_tags = list({tag.strip() for tag in all_tags if tag.strip()})
         structured_tags = user_tags # future: extract some tags from metadata
-        dprint(f"saved:{saved}")
+        dprint(f"saved:{saved.get('ui') if isinstance(saved, dict) else saved}")
         dprint(f"imm_filename:{imm_filename}")
         dprint(f"imm_fullpath:{imm_fullpath}")
         # Validation, I am putting this after the image is saved to file system
@@ -327,10 +329,9 @@ class GSaveVideoToImmich(SaveVideo):
         url = f"http://{server}:{port}"
         missing = get_missing(settings)
         if missing:
-            print("\nIMMICH CONFIGURATION ERROR")
-            print(f"Save Image to Immich Server Node Missing: {', '.join(missing)}")
-            print("Please configure in Settings:Gadzoinks")
-            print(f"settings snapshot:{masked_settings(settings)}")
+            log.error("IMMICH CONFIGURATION ERROR - Save to Immich Server node is missing: %s. "
+                      "Please configure in Settings > Gadzoinks.", ", ".join(missing))
+            log.debug("settings snapshot: %s", masked_settings(settings))
             # Generate an error so the user gets alerted to what is wrong
             error_msg = f": Missing {', '.join(missing)}. Open Settings, Gadzoinks to configure."
             raise ValueError(error_msg)

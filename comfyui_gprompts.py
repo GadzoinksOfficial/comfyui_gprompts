@@ -41,7 +41,9 @@ from PIL.ExifTags import TAGS
 import json
 import threading
 from .immich_importer import ImmichImporter
-from .common import dprint, DynamicPromptEngine
+from .common import dprint, DynamicPromptEngine, get_logger, set_debug
+
+log = get_logger("settings")
 
 
 # Web directory for documentation files
@@ -116,6 +118,8 @@ def apply_settings(params):
             dprint(f"setting [{key}]={shown}")
         if not get_missing(the_settings) or any(the_settings.get(k) for k in LLM_SETTING_KEYS):
             persist_settings(dict(the_settings))
+    if "debug_logging" in params:
+        set_debug(parse_bool_setting(params.get("debug_logging")))
     # Wake any execute() currently waiting on a settings refresh
     settings_updated.set()
     return skipped
@@ -176,7 +180,7 @@ def load_persisted_settings():
     except FileNotFoundError:
         pass
     except Exception as e:
-        print(f"Gadzoinks: could not read persisted settings: {e}")
+        log.warning(f"Gadzoinks: could not read persisted settings: {e}")
     return {}
 
 def persist_settings(settings):
@@ -188,7 +192,7 @@ def persist_settings(settings):
             json.dump(settings, f, indent=2)
         os.replace(tmp, path)
     except Exception as e:
-        print(f"Gadzoinks: could not persist settings: {e}")
+        log.warning(f"Gadzoinks: could not persist settings: {e}")
 
 # Load last known-good settings at startup so a server restart (or a frontend
 # that never connects, e.g. headless/API usage) still has working values.
@@ -234,13 +238,13 @@ def get_immich_settings(wait_seconds=4.0):
             if v not in (None, ""):
                 merged[k] = v
         if not get_missing(merged):
-            print("Gadzoinks: frontend unreachable, using persisted settings")
+            log.info("Gadzoinks: frontend unreachable, using persisted settings")
             with settings_lock:
                 the_settings.update(merged)
             return merged
     return snap
 
-print("LOADING GPROMPTS")
+dprint("LOADING GPROMPTS")
 
 
 ###
@@ -463,7 +467,7 @@ class LoadImagesBatch:
     RETURN_NAMES = ("image", "filename_text", "width", "height", "prompt")
     FUNCTION = "load_batch_images"
 
-    CATEGORY = "Image/Loaders"
+    CATEGORY = "gprompts/image"
 
 
     def load_batch_images(self, path, pattern='*', index=0, mode="single_image", 
@@ -609,7 +613,7 @@ class GImageSaveWithExtraMetadata(SaveImage):
             },
         }
 
-    CATEGORY = "image"
+    CATEGORY = "gprompts/image"
     RETURN_TYPES = ()
     OUTPUT_NODE = True
     FUNCTION = "execute"
@@ -708,7 +712,7 @@ class GImageSaveImmich(SaveImage):
             },
         }
 
-    CATEGORY = "image"
+    CATEGORY = "gprompts/immich"
     RETURN_TYPES = ()
     OUTPUT_NODE = True
     FUNCTION = "execute"
@@ -797,7 +801,7 @@ class GImageSaveImmich(SaveImage):
         if not save_also:
             # if not saving we get stuck at 00001 , so use a counter intead
             imm_filename = re.sub(r'(\d+)(?=[^_]*$)', str(filename_counter), imm_filename)
-        dprint(f"saved:{saved}")
+        dprint(f"saved:{saved.get('ui') if isinstance(saved, dict) else saved}")
         dprint(f"imm_filename:{imm_filename}")
         dprint(f"imm_fullpath:{imm_fullpath}")
         # Validation, I am putting this after the image is saved to file system
@@ -809,10 +813,9 @@ class GImageSaveImmich(SaveImage):
         url = f"http://{server}:{port}"
         missing = get_missing(settings)
         if missing:
-            print("\nIMMICH CONFIGURATION ERROR")
-            print(f"Save Image to Immich Server Node Missing: {', '.join(missing)}")
-            print("Please configure in Settings:Gadzoinks")
-            print(f"settings snapshot:{masked_settings(settings)}")
+            log.error("IMMICH CONFIGURATION ERROR - Save to Immich Server node is missing: %s. "
+                      "Please configure in Settings > Gadzoinks.", ", ".join(missing))
+            log.debug("settings snapshot: %s", masked_settings(settings))
             # Generate an error so the user gets alerted to what is wrong
             error_msg = f": Missing {', '.join(missing)}. Open Settings, Gadzoinks to configure."
             raise ValueError(error_msg)
@@ -891,7 +894,7 @@ class StringFormatter:
     RETURN_TYPES = ("STRING",)
     RETURN_NAMES = ("formatted_string",)
     FUNCTION = "format_string"
-    CATEGORY = "utils/text"
+    CATEGORY = "gprompts/text"
     
     DESCRIPTION = (
         "Node that builds strings by replacing $variables. "
@@ -1065,7 +1068,7 @@ class GPrompts(DynamicPromptEngine):
     RETURN_TYPES = ("STRING", "STRING", "STRING", "INT")
     RETURN_NAMES = ("text", "dynamic_prompt", "computed_prompt", "seed")
     FUNCTION = "process_dynamic_prompt"
-    CATEGORY = "text"
+    CATEGORY = "gprompts"
     
     DESCRIPTION = (
         "Dynamic prompt generator with support for random {}, sequential {{}}, and wildcard __word__ syntax. "
