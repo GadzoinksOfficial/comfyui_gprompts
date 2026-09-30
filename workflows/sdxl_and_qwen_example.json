@@ -1,0 +1,1825 @@
+{
+  "id": "54bb395d-3e60-4c94-b525-85523901575b",
+  "revision": 0,
+  "last_node_id": 508,
+  "last_link_id": 754,
+  "nodes": [
+    {
+      "id": 471,
+      "type": "StringFormatter",
+      "pos": [
+        1293.9271438574265,
+        1792.477908075869
+      ],
+      "size": [
+        452.9671955763115,
+        453.2528084712444
+      ],
+      "flags": {},
+      "order": 19,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "a",
+          "shape": 7,
+          "type": "*",
+          "link": 724
+        },
+        {
+          "name": "b",
+          "shape": 7,
+          "type": "*",
+          "link": 738
+        },
+        {
+          "name": "c",
+          "shape": 7,
+          "type": "*",
+          "link": 730
+        },
+        {
+          "name": "d",
+          "shape": 7,
+          "type": "*",
+          "link": 731
+        },
+        {
+          "name": "e",
+          "shape": 7,
+          "type": "*",
+          "link": 726
+        },
+        {
+          "name": "f",
+          "shape": 7,
+          "type": "*",
+          "link": 722
+        },
+        {
+          "name": "g",
+          "shape": 7,
+          "type": "*",
+          "link": 734
+        },
+        {
+          "name": "h",
+          "shape": 7,
+          "type": "*",
+          "link": 737
+        }
+      ],
+      "outputs": [
+        {
+          "name": "formatted_string",
+          "type": "STRING",
+          "links": [
+            686
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "StringFormatter"
+      },
+      "widgets_values": [
+        "The text  is \n$a\n\ntemplate\n$f\n\ndynamic is \n$b\n\ncomputed is\n$e\n\n\nthe seed is $h, width is $c, height is $d. Generated at $datetime on $hostname, Operating system $os"
+      ],
+      "widgets_values_named": {
+        "format_string": "The text  is \n$a\n\ntemplate\n$f\n\ndynamic is \n$b\n\ncomputed is\n$e\n\n\nthe seed is $h, width is $c, height is $d. Generated at $datetime on $hostname, Operating system $os"
+      }
+    },
+    {
+      "id": 472,
+      "type": "GImageSaveImmich",
+      "pos": [
+        931.3515681600975,
+        1108.3005694458334
+      ],
+      "size": [
+        1068.8667156564093,
+        599.2472971401053
+      ],
+      "flags": {},
+      "order": 26,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 701
+        },
+        {
+          "name": "notes",
+          "shape": 7,
+          "type": "*",
+          "link": 686
+        },
+        {
+          "name": "computed_prompt",
+          "shape": 7,
+          "type": "*",
+          "link": null
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "GImageSaveImmich"
+      },
+      "widgets_values": [
+        "sdxlrefiner",
+        "sdxlrefiner",
+        "",
+        true
+      ],
+      "widgets_values_named": {
+        "filename_prefix": "sdxlrefiner",
+        "album": "sdxlrefiner",
+        "tags": "",
+        "save_also": true
+      }
+    },
+    {
+      "id": 475,
+      "type": "UpscaleModelLoader",
+      "pos": [
+        1880.7060788060935,
+        2555.1390722652586
+      ],
+      "size": [
+        315,
+        58
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 4,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "UPSCALE_MODEL",
+          "type": "UPSCALE_MODEL",
+          "slot_index": 0,
+          "links": [
+            694
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "UpscaleModelLoader"
+      },
+      "widgets_values": [
+        "4x-UltraSharpV2.safetensors"
+      ],
+      "widgets_values_named": {
+        "model_name": "4x-UltraSharpV2.safetensors"
+      }
+    },
+    {
+      "id": 476,
+      "type": "ImageUpscaleWithModel",
+      "pos": [
+        2257.493137928501,
+        2578.573291122197
+      ],
+      "size": [
+        340.20001220703125,
+        46
+      ],
+      "flags": {},
+      "order": 25,
+      "mode": 4,
+      "inputs": [
+        {
+          "name": "upscale_model",
+          "type": "UPSCALE_MODEL",
+          "link": 694
+        },
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 699
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "slot_index": 0,
+          "links": [
+            701
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageUpscaleWithModel"
+      }
+    },
+    {
+      "id": 479,
+      "type": "SplitImageWithAlpha",
+      "pos": [
+        1956.6350642308573,
+        2687.1580039531596
+      ],
+      "size": [
+        186.7291015625,
+        46
+      ],
+      "flags": {},
+      "order": 24,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 704
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            699
+          ]
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "SplitImageWithAlpha"
+      }
+    },
+    {
+      "id": 480,
+      "type": "UNETLoader",
+      "pos": [
+        112.80328082837445,
+        2627.9112385055937
+      ],
+      "size": [
+        510,
+        90
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            739
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "UNETLoader",
+        "models": [
+          {
+            "name": "qwen_image_2.1_int8_convrot.safetensors",
+            "url": "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/diffusion_models/qwen_image_2.1_int8_convrot.safetensors",
+            "directory": "diffusion_models"
+          }
+        ]
+      },
+      "widgets_values": [
+        "qwen_image_2.1_int8_convrot.safetensors",
+        "default"
+      ],
+      "widgets_values_named": {
+        "unet_name": "qwen_image_2.1_int8_convrot.safetensors",
+        "weight_dtype": "default"
+      }
+    },
+    {
+      "id": 481,
+      "type": "TextEncodeQwenImage21",
+      "pos": [
+        717.2645586055157,
+        2628.91417087215
+      ],
+      "size": [
+        530,
+        680
+      ],
+      "flags": {},
+      "order": 21,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 718
+        },
+        {
+          "name": "images.image_1",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "name": "vae",
+          "shape": 7,
+          "type": "VAE",
+          "link": 729
+        },
+        {
+          "name": "prompt",
+          "type": "STRING",
+          "widget": {
+            "name": "prompt"
+          },
+          "link": 728
+        },
+        {
+          "label": "resolution",
+          "name": "resolution",
+          "type": "INT",
+          "widget": {
+            "name": "resolution"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "links": [
+            706
+          ]
+        },
+        {
+          "name": "negative",
+          "type": "CONDITIONING",
+          "links": [
+            708
+          ]
+        },
+        {
+          "name": "latent",
+          "type": "LATENT",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "TextEncodeQwenImage21"
+      },
+      "widgets_values": [
+        "",
+        "",
+        2048
+      ],
+      "widgets_values_named": {
+        "prompt": "",
+        "negative_prompt": "",
+        "resolution": 2048
+      }
+    },
+    {
+      "id": 482,
+      "type": "CLIPLoader",
+      "pos": [
+        112.80328082837445,
+        2787.9112385055937
+      ],
+      "size": [
+        510,
+        120
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [
+            740
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CLIPLoader",
+        "models": [
+          {
+            "name": "qwen3vl_8b_int8_convrot.safetensors",
+            "url": "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/text_encoders/qwen3vl_8b_int8_convrot.safetensors",
+            "directory": "text_encoders"
+          }
+        ]
+      },
+      "widgets_values": [
+        "qwen3vl_8b_int8_convrot.safetensors",
+        "qwen_image",
+        "default"
+      ],
+      "widgets_values_named": {
+        "clip_name": "qwen3vl_8b_int8_convrot.safetensors",
+        "type": "qwen_image",
+        "device": "default"
+      }
+    },
+    {
+      "id": 483,
+      "type": "VAELoader",
+      "pos": [
+        112.80328082837445,
+        2987.9112385055937
+      ],
+      "size": [
+        510,
+        70
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "links": [
+            703,
+            729
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAELoader",
+        "models": [
+          {
+            "name": "qwen_image_2.1_vae_bf16.safetensors",
+            "url": "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/vae/qwen_image_2.1_vae_bf16.safetensors",
+            "directory": "vae"
+          }
+        ]
+      },
+      "widgets_values": [
+        "qwen_image_2.1_vae_bf16.safetensors"
+      ],
+      "widgets_values_named": {
+        "vae_name": "qwen_image_2.1_vae_bf16.safetensors"
+      }
+    },
+    {
+      "id": 484,
+      "type": "EmptyLatentImage",
+      "pos": [
+        839.9015162464019,
+        2358.5708230967807
+      ],
+      "size": [
+        300,
+        120
+      ],
+      "flags": {},
+      "order": 20,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "width",
+          "type": "INT",
+          "widget": {
+            "name": "width"
+          },
+          "link": 732
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "widget": {
+            "name": "height"
+          },
+          "link": 733
+        }
+      ],
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            707
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "EmptyLatentImage"
+      },
+      "widgets_values": [
+        1024,
+        1024,
+        1
+      ],
+      "widgets_values_named": {
+        "width": 1024,
+        "height": 1024,
+        "batch_size": 1
+      }
+    },
+    {
+      "id": 485,
+      "type": "VAEDecode",
+      "pos": [
+        1922.8032808283745,
+        2877.9112385055937
+      ],
+      "size": [
+        230,
+        60
+      ],
+      "flags": {},
+      "order": 23,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 705
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 703
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            704
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAEDecode"
+      }
+    },
+    {
+      "id": 486,
+      "type": "KSampler",
+      "pos": [
+        1482.8032808283745,
+        2857.9112385055937
+      ],
+      "size": [
+        270,
+        270
+      ],
+      "flags": {},
+      "order": 22,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 715
+        },
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "link": 706
+        },
+        {
+          "name": "negative",
+          "type": "CONDITIONING",
+          "link": 708
+        },
+        {
+          "name": "latent_image",
+          "type": "LATENT",
+          "link": 707
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "widget": {
+            "name": "seed"
+          },
+          "link": 736
+        }
+      ],
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            705
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "KSampler"
+      },
+      "widgets_values": [
+        0,
+        "fixed",
+        40,
+        3,
+        "euler",
+        "simple",
+        1
+      ],
+      "widgets_values_named": {
+        "seed": 0,
+        "control_after_generate": "fixed",
+        "steps": 40,
+        "cfg": 3,
+        "sampler_name": "euler",
+        "scheduler": "simple",
+        "denoise": 1
+      }
+    },
+    {
+      "id": 488,
+      "type": "Reroute",
+      "pos": [
+        1183.1463093947316,
+        2469.492655318865
+      ],
+      "size": [
+        75,
+        26
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "",
+          "type": "*",
+          "link": 739
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "MODEL",
+          "links": [
+            715
+          ]
+        }
+      ],
+      "properties": {
+        "showOutputText": false,
+        "horizontal": false
+      }
+    },
+    {
+      "id": 489,
+      "type": "Reroute",
+      "pos": [
+        620.915012605738,
+        2471.944545128434
+      ],
+      "size": [
+        75,
+        26
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "",
+          "type": "*",
+          "link": 740
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "CLIP",
+          "links": [
+            718
+          ]
+        }
+      ],
+      "properties": {
+        "showOutputText": false,
+        "horizontal": false
+      }
+    },
+    {
+      "id": 492,
+      "type": "GPromptsEnhanced",
+      "pos": [
+        205.9083412186846,
+        1799.9794486725275
+      ],
+      "size": [
+        956.692604575846,
+        513.8084794339691
+      ],
+      "flags": {},
+      "order": 16,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "enhancer",
+          "type": "GPROMPT_ENHANCER",
+          "link": 750
+        },
+        {
+          "name": "images.image_1",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": 754
+        },
+        {
+          "name": "images.image_2",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "name": "text",
+          "type": "STRING",
+          "widget": {
+            "name": "text"
+          },
+          "link": 751
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "widget": {
+            "name": "seed"
+          },
+          "link": 752
+        }
+      ],
+      "outputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "links": [
+            724,
+            727
+          ]
+        },
+        {
+          "name": "dynamic_prompt",
+          "type": "STRING",
+          "links": [
+            734,
+            738
+          ]
+        },
+        {
+          "name": "computed_prompt",
+          "type": "STRING",
+          "links": [
+            726
+          ]
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "links": [
+            735,
+            737
+          ]
+        },
+        {
+          "name": "template",
+          "type": "STRING",
+          "links": [
+            722
+          ]
+        },
+        {
+          "name": "wh_ratio",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "name": "width",
+          "type": "INT",
+          "links": [
+            730,
+            732
+          ]
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "links": [
+            731,
+            733
+          ]
+        },
+        {
+          "name": "resolution",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "name": "ratio_follow",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "GPromptsEnhanced",
+        "_meta": {
+          "computed_result": "curly { }, A painting in the style of Wassily Kandinsky, featuring bold, flat planes of color and simplified geometric forms. A vibrant beach scene unfolds under a bright yellow sun against a deep blue sky. In the foreground, groups of people in colorful attire stand or sit at tables on the sand; their forms are stylized with distinct blocks of red, blue, green, and yellow, outlined in black or white. Several sailboats with triangular sails drift on the calm blue water of the bay. To the right, a cluster of buildings with white walls and sharp, red-pitched roofs lines the shore, accompanied by tall, slender cypress trees in dark green. The composition is horizontal, emphasizing the curve of the coastline. The brushwork is expressive, with thick, confident strokes defining the edges of the sand, water, and figures, creating a rhythmic, musical quality across the canvas.",
+          "computed_prompt": "curly { }, A painting in the style of Wassily Kandinsky, featuring bold, flat planes of color and simplified geometric forms. A vibrant beach scene unfolds under a bright yellow sun against a deep blue sky. In the foreground, groups of people in colorful attire stand or sit at tables on the sand; their forms are stylized with distinct blocks of red, blue, green, and yellow, outlined in black or white. Several sailboats with triangular sails drift on the calm blue water of the bay. To the right, a cluster of buildings with white walls and sharp, red-pitched roofs lines the shore, accompanied by tall, slender cypress trees in dark green. The composition is horizontal, emphasizing the curve of the coastline. The brushwork is expressive, with thick, confident strokes defining the edges of the sand, water, and figures, creating a rhythmic, musical quality across the canvas."
+        }
+      },
+      "widgets_values": [
+        "8k raw boudoir  style  photorealistic  image of a    \n{{ blue  | yellow | pink   }}   {{dog | cat | monkey  }} \nNot cartoon, not cgi, not animated, not anime.",
+        "curly { }",
+        "curly { }",
+        0,
+        "randomize",
+        true,
+        "2.0",
+        "every run",
+        "off"
+      ],
+      "widgets_values_named": {
+        "text": "8k raw boudoir  style  photorealistic  image of a    \n{{ blue  | yellow | pink   }}   {{dog | cat | monkey  }} \nNot cartoon, not cgi, not animated, not anime.",
+        "trigger_words": "curly { }",
+        "delimiter_style": "curly { }",
+        "seed": 0,
+        "control_after_generate": "randomize",
+        "preserve_dynamic_words": true,
+        "target_megapixels": "2.0",
+        "enhance": "every run",
+        "prefetch_next": "off"
+      }
+    },
+    {
+      "id": 493,
+      "type": "Reroute",
+      "pos": [
+        656.5033142298671,
+        2354.7707882560053
+      ],
+      "size": [
+        75,
+        26
+      ],
+      "flags": {},
+      "order": 17,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "",
+          "type": "*",
+          "widget": {
+            "name": "value"
+          },
+          "link": 727
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "STRING",
+          "links": [
+            728
+          ]
+        }
+      ],
+      "properties": {
+        "showOutputText": false,
+        "horizontal": false
+      }
+    },
+    {
+      "id": 497,
+      "type": "Reroute",
+      "pos": [
+        1239.3680749543284,
+        2389.5449246476314
+      ],
+      "size": [
+        75,
+        26
+      ],
+      "flags": {},
+      "order": 18,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "",
+          "type": "*",
+          "widget": {
+            "name": "value"
+          },
+          "link": 735
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "INT",
+          "links": [
+            736
+          ]
+        }
+      ],
+      "properties": {
+        "showOutputText": false,
+        "horizontal": false
+      }
+    },
+    {
+      "id": 499,
+      "type": "PreviewImage",
+      "pos": [
+        144.0875466225042,
+        1102.8764056707935
+      ],
+      "size": [
+        748.1200186647952,
+        599.3955639192927
+      ],
+      "flags": {},
+      "order": 15,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 741
+        }
+      ],
+      "outputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "links": []
+        }
+      ],
+      "title": "SDXL Preview Image",
+      "properties": {
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": [],
+      "widgets_values_named": {}
+    },
+    {
+      "id": 500,
+      "type": "GPromptEnhancerLoaderGGUFEdit",
+      "pos": [
+        -633.7723934188647,
+        1896.3025962796933
+      ],
+      "size": [
+        350.2525390625,
+        394
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "enhancer",
+          "type": "GPROMPT_ENHANCER",
+          "links": [
+            750
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "GPromptEnhancerLoaderGGUFEdit"
+      },
+      "widgets_values": [
+        "Qwen3.5-9B-Q4_0.gguf",
+        "mmproj-BF16.gguf",
+        "sdxl_refine_system_prompt.txt",
+        16384,
+        8192,
+        -1,
+        0.6,
+        0.95,
+        20,
+        0,
+        true,
+        800,
+        "1.0",
+        true,
+        true
+      ],
+      "widgets_values_named": {
+        "model": "Qwen3.5-9B-Q4_0.gguf",
+        "mmproj": "mmproj-BF16.gguf",
+        "system_prompt": "sdxl_refine_system_prompt.txt",
+        "context_length": 16384,
+        "max_new_tokens": 8192,
+        "gpu_layers": -1,
+        "temperature": 0.6,
+        "top_p": 0.95,
+        "top_k": 20,
+        "presence_penalty": 0,
+        "enable_thinking": true,
+        "plan_tokens": 800,
+        "llm_image_megapixels": "1.0",
+        "keep_loaded": true,
+        "flash_attn": true
+      }
+    },
+    {
+      "id": 501,
+      "type": "GPrompts",
+      "pos": [
+        -622.8409987654923,
+        1539.1659403557571
+      ],
+      "size": [
+        722.775455072225,
+        299.40255298582997
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "links": [
+            743,
+            751
+          ]
+        },
+        {
+          "name": "dynamic_prompt",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "name": "computed_prompt",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "links": [
+            752
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "GPrompts",
+        "_meta": {
+          "computed_result": " in the style of ( Wassily Kandinsky :1.5)  a  painting of people having a BBQ at the beach with tall Tiki staues in the background ",
+          "computed_prompt": " in the style of ( Wassily Kandinsky :1.5)  a  painting of people having a BBQ at the beach with tall Tiki staues in the background "
+        }
+      },
+      "widgets_values": [
+        " in the style of ( {{ Hieronymus Bosch |  monochromatic intricate  detailed Bali batuan | Miro | Wassily Kandinsky  | Dali mixed with Monet | Titian |  Miro mixed with Kandinsky  | Hieronymus Bosch mixed with Kandinsky |\ngerald brom  mixed with Kandinsky  | gerald brom  mixed with Miro | Indian Warli |  \nBali batuan | monochromatic intricate  detailed Bali batuan | \nmix Escher and Bali batuan  \n }} :1.5)  a  painting of people having a BBQ at the beach with tall Tiki staues in the background ",
+        "curly { }",
+        837006793445572,
+        "randomize",
+        " in the style of ( Wassily Kandinsky :1.5)  a  painting of people having a BBQ at the beach with tall Tiki staues in the background "
+      ],
+      "widgets_values_named": {
+        "text": " in the style of ( {{ Hieronymus Bosch |  monochromatic intricate  detailed Bali batuan | Miro | Wassily Kandinsky  | Dali mixed with Monet | Titian |  Miro mixed with Kandinsky  | Hieronymus Bosch mixed with Kandinsky |\ngerald brom  mixed with Kandinsky  | gerald brom  mixed with Miro | Indian Warli |  \nBali batuan | monochromatic intricate  detailed Bali batuan | \nmix Escher and Bali batuan  \n }} :1.5)  a  painting of people having a BBQ at the beach with tall Tiki staues in the background ",
+        "delimiter_style": "curly { }",
+        "seed": 837006793445572,
+        "control_after_generate": "randomize",
+        "computed_prompt": " in the style of ( Wassily Kandinsky :1.5)  a  painting of people having a BBQ at the beach with tall Tiki staues in the background "
+      }
+    },
+    {
+      "id": 502,
+      "type": "CLIPTextEncode",
+      "pos": [
+        -795.5070353652345,
+        2350.653595377888
+      ],
+      "size": [
+        695.1478271484375,
+        108.80615997314453
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 742
+        },
+        {
+          "name": "text",
+          "type": "STRING",
+          "widget": {
+            "name": "text"
+          },
+          "link": 743
+        }
+      ],
+      "outputs": [
+        {
+          "name": "CONDITIONING",
+          "type": "CONDITIONING",
+          "slot_index": 0,
+          "links": [
+            748
+          ]
+        }
+      ],
+      "title": "positive",
+      "properties": {
+        "Node name for S&R": "CLIPTextEncode"
+      },
+      "widgets_values": [
+        "a humanoid figure meditating  in ruins . his face  is turning into a mass of tentacles  shooting upwards. surreal . relasistic. high details."
+      ],
+      "widgets_values_named": {
+        "text": "a humanoid figure meditating  in ruins . his face  is turning into a mass of tentacles  shooting upwards. surreal . relasistic. high details."
+      }
+    },
+    {
+      "id": 503,
+      "type": "CLIPTextEncode",
+      "pos": [
+        -823.8742743005344,
+        2544.4226249811745
+      ],
+      "size": [
+        681.0579833984375,
+        88
+      ],
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 744
+        }
+      ],
+      "outputs": [
+        {
+          "name": "CONDITIONING",
+          "type": "CONDITIONING",
+          "slot_index": 0,
+          "links": [
+            749
+          ]
+        }
+      ],
+      "title": "negative",
+      "properties": {
+        "Node name for S&R": "CLIPTextEncode"
+      },
+      "widgets_values": [
+        "nsfw, naked , breasts . nipples.  frame blurry animated text watermark nsfw breasts"
+      ],
+      "widgets_values_named": {
+        "text": "nsfw, naked , breasts . nipples.  frame blurry animated text watermark nsfw breasts"
+      }
+    },
+    {
+      "id": 504,
+      "type": "VAEDecode",
+      "pos": [
+        -25.135230061174912,
+        2406.9171337428606
+      ],
+      "size": [
+        210,
+        46
+      ],
+      "flags": {},
+      "order": 14,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 745
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 746
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "slot_index": 0,
+          "links": [
+            741,
+            754
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAEDecode"
+      }
+    },
+    {
+      "id": 505,
+      "type": "CheckpointLoaderSimple",
+      "pos": [
+        -530.0143408265875,
+        2745.2445679012076
+      ],
+      "size": [
+        315,
+        98
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "slot_index": 0,
+          "links": [
+            747
+          ]
+        },
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "slot_index": 1,
+          "links": [
+            742,
+            744
+          ]
+        },
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "slot_index": 2,
+          "links": [
+            746
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CheckpointLoaderSimple"
+      },
+      "widgets_values": [
+        "SDXLFaetastic_v24.safetensors"
+      ],
+      "widgets_values_named": {
+        "ckpt_name": "SDXLFaetastic_v24.safetensors"
+      }
+    },
+    {
+      "id": 506,
+      "type": "KSamplerAdvanced",
+      "pos": [
+        -332.14390634430197,
+        2909.2134725456135
+      ],
+      "size": [
+        312.353515625,
+        334
+      ],
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 747
+        },
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "link": 748
+        },
+        {
+          "name": "negative",
+          "type": "CONDITIONING",
+          "link": 749
+        },
+        {
+          "name": "latent_image",
+          "type": "LATENT",
+          "link": 753
+        }
+      ],
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            745
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "KSamplerAdvanced"
+      },
+      "widgets_values": [
+        "enable",
+        522169098064762,
+        "randomize",
+        70,
+        2.5,
+        "dpmpp_2m_sde_gpu",
+        "karras",
+        0,
+        70,
+        "disable"
+      ],
+      "widgets_values_named": {
+        "add_noise": "enable",
+        "noise_seed": 522169098064762,
+        "control_after_generate": "randomize",
+        "steps": 70,
+        "cfg": 2.5,
+        "sampler_name": "dpmpp_2m_sde_gpu",
+        "scheduler": "karras",
+        "start_at_step": 0,
+        "end_at_step": 70,
+        "return_with_leftover_noise": "disable"
+      }
+    },
+    {
+      "id": 507,
+      "type": "EmptyLatentImage",
+      "pos": [
+        -829.4202378594206,
+        2984.1996576432553
+      ],
+      "size": [
+        315,
+        106
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "slot_index": 0,
+          "links": [
+            753
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "EmptyLatentImage"
+      },
+      "widgets_values": [
+        1216,
+        832,
+        1
+      ],
+      "widgets_values_named": {
+        "width": 1216,
+        "height": 832,
+        "batch_size": 1
+      }
+    },
+    {
+      "id": 508,
+      "type": "Note",
+      "pos": [
+        -618.5699226332628,
+        1056.084855796702
+      ],
+      "size": [
+        479.4016956532464,
+        425.38562806327036
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "Sometimes I prefer the artistic composition of an older SDXL model.\nThis workflow creates an image with SDXL from a common prompt, and then feeds that image into Qwen 2.1 as a reference image, and refers to the original prompt which is enhanced and generates a new image\n\nAdjust temperature in prompt enhancer loader to control how much of the original images used the lower the number the more of the image is used"
+      ],
+      "widgets_values_named": {
+        "text": "Sometimes I prefer the artistic composition of an older SDXL model.\nThis workflow creates an image with SDXL from a common prompt, and then feeds that image into Qwen 2.1 as a reference image, and refers to the original prompt which is enhanced and generates a new image\n\nAdjust temperature in prompt enhancer loader to control how much of the original images used the lower the number the more of the image is used"
+      },
+      "color": "#432",
+      "bgcolor": "#653"
+    }
+  ],
+  "links": [
+    [
+      686,
+      471,
+      0,
+      472,
+      1,
+      "STRING"
+    ],
+    [
+      694,
+      475,
+      0,
+      476,
+      0,
+      "UPSCALE_MODEL"
+    ],
+    [
+      699,
+      479,
+      0,
+      476,
+      1,
+      "IMAGE"
+    ],
+    [
+      701,
+      476,
+      0,
+      472,
+      0,
+      "IMAGE"
+    ],
+    [
+      703,
+      483,
+      0,
+      485,
+      1,
+      "VAE"
+    ],
+    [
+      704,
+      485,
+      0,
+      479,
+      0,
+      "IMAGE"
+    ],
+    [
+      705,
+      486,
+      0,
+      485,
+      0,
+      "LATENT"
+    ],
+    [
+      706,
+      481,
+      0,
+      486,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      707,
+      484,
+      0,
+      486,
+      3,
+      "LATENT"
+    ],
+    [
+      708,
+      481,
+      1,
+      486,
+      2,
+      "CONDITIONING"
+    ],
+    [
+      715,
+      488,
+      0,
+      486,
+      0,
+      "MODEL"
+    ],
+    [
+      718,
+      489,
+      0,
+      481,
+      0,
+      "CLIP"
+    ],
+    [
+      722,
+      492,
+      4,
+      471,
+      5,
+      "STRING"
+    ],
+    [
+      724,
+      492,
+      0,
+      471,
+      0,
+      "STRING"
+    ],
+    [
+      726,
+      492,
+      2,
+      471,
+      4,
+      "STRING"
+    ],
+    [
+      727,
+      492,
+      0,
+      493,
+      0,
+      "STRING"
+    ],
+    [
+      728,
+      493,
+      0,
+      481,
+      3,
+      "STRING"
+    ],
+    [
+      729,
+      483,
+      0,
+      481,
+      2,
+      "VAE"
+    ],
+    [
+      730,
+      492,
+      6,
+      471,
+      2,
+      "INT"
+    ],
+    [
+      731,
+      492,
+      7,
+      471,
+      3,
+      "INT"
+    ],
+    [
+      732,
+      492,
+      6,
+      484,
+      0,
+      "INT"
+    ],
+    [
+      733,
+      492,
+      7,
+      484,
+      1,
+      "INT"
+    ],
+    [
+      734,
+      492,
+      1,
+      471,
+      6,
+      "STRING"
+    ],
+    [
+      735,
+      492,
+      3,
+      497,
+      0,
+      "INT"
+    ],
+    [
+      736,
+      497,
+      0,
+      486,
+      4,
+      "INT"
+    ],
+    [
+      737,
+      492,
+      3,
+      471,
+      7,
+      "INT"
+    ],
+    [
+      738,
+      492,
+      1,
+      471,
+      1,
+      "STRING"
+    ],
+    [
+      739,
+      480,
+      0,
+      488,
+      0,
+      "MODEL"
+    ],
+    [
+      740,
+      482,
+      0,
+      489,
+      0,
+      "CLIP"
+    ],
+    [
+      741,
+      504,
+      0,
+      499,
+      0,
+      "IMAGE"
+    ],
+    [
+      742,
+      505,
+      1,
+      502,
+      0,
+      "CLIP"
+    ],
+    [
+      743,
+      501,
+      0,
+      502,
+      1,
+      "STRING"
+    ],
+    [
+      744,
+      505,
+      1,
+      503,
+      0,
+      "CLIP"
+    ],
+    [
+      745,
+      506,
+      0,
+      504,
+      0,
+      "LATENT"
+    ],
+    [
+      746,
+      505,
+      2,
+      504,
+      1,
+      "VAE"
+    ],
+    [
+      747,
+      505,
+      0,
+      506,
+      0,
+      "MODEL"
+    ],
+    [
+      748,
+      502,
+      0,
+      506,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      749,
+      503,
+      0,
+      506,
+      2,
+      "CONDITIONING"
+    ],
+    [
+      753,
+      507,
+      0,
+      506,
+      3,
+      "LATENT"
+    ],
+    [
+      750,
+      500,
+      0,
+      492,
+      0,
+      "GPROMPT_ENHANCER"
+    ],
+    [
+      754,
+      504,
+      0,
+      492,
+      1,
+      "IMAGE"
+    ],
+    [
+      751,
+      501,
+      0,
+      492,
+      3,
+      "STRING"
+    ],
+    [
+      752,
+      501,
+      3,
+      492,
+      4,
+      "INT"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 38,
+      "title": "Models",
+      "bounding": [
+        102.80328082837445,
+        2517.9112385055937,
+        530,
+        590
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    },
+    {
+      "id": 40,
+      "title": "Conditioning",
+      "bounding": [
+        662.8032808283745,
+        2517.9112385055937,
+        700,
+        860
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    },
+    {
+      "id": 41,
+      "title": "Sampling",
+      "bounding": [
+        1392.8032808283745,
+        2517.9112385055937,
+        470,
+        860
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    }
+  ],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.6617135460737732,
+      "offset": [
+        699.7583747143083,
+        -838.9648609123649
+      ]
+    },
+    "frontendVersion": "1.53.6",
+    "VHS_latentpreview": false,
+    "VHS_latentpreviewrate": 0,
+    "VHS_MetadataImage": true,
+    "VHS_KeepIntermediate": true
+  },
+  "extensions": {
+    "seed_widgets": {
+      "486": 0,
+      "492": 2
+    }
+  },
+  "version": 0.4
+}
