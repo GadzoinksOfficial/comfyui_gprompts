@@ -808,7 +808,8 @@ class GGUFPromptEnhancer(PromptEnhancerBase):
         finally:
             if not self.keep_loaded:
                 unload_llm()
-        return finalize_result(raw, finish, thinking, contract, self.max_new_tokens)
+        return finalize_result(raw, finish, thinking, contract, self.max_new_tokens,
+                               system_prompt=system_prompt, image_count=len(images))
 
 
 def run_raw_generation(stream_raw, system_prompt, user_text, thinking, plan_tokens,
@@ -854,7 +855,147 @@ def run_raw_generation(stream_raw, system_prompt, user_text, thinking, plan_toke
     return raw, finish, contract
 
 
-def finalize_result(raw, finish, thinking, contract, max_new_tokens):
+# ----------------------------------------------------------------------------
+# MiniMax H3 prompt check. The H3 system prompts ask for MiniMax's official
+# structure; a model that ignores them (e.g. a Qwen-Image PE fine-tune) writes
+# something that looks plausible but that H3 reads badly. Catch that before a
+# long render.
+# ----------------------------------------------------------------------------
+H3_BASE_FIELDS = ("integrated_multimodal_description:", "overall_soundscape:", "non_diegetic_music:")
+H3_REF_FIELDS = ("subject_definitions:", "summary:", "retention_analysis:", "detailed_description:",
+                 "overall_soundscape:", "non_diegetic_music:")
+_H3_I2VA = re.compile(r"^For the target video, at 0\.00 seconds into the target video, <Picture 1> "
+                      r"\(from \[Shot 1\]\) is fully referenced\.$")
+_H3_FL2VA = re.compile(r"^How the reference pictures align with the target video \u2014 Picture 1 \(from Shot 1\) "
+                       r"aligns with the 0\.00-second mark of the target video; Picture 2 \(from Shot (\d+)\) "
+                       r"aligns with the (\d+\.\d\d)-second mark of the target video\.$")
+_H3_L2VA = re.compile(r"^How the reference pictures align with the target video \u2014 <Picture 1> "
+                      r"\(from \[Shot (\d+)\]\) aligns with the (\d+\.\d\d)-second mark of the target video\.$")
+_H3_SHOT = re.compile(r"\[Shot (\d+)\](?:\s*At (\d+):(\d+(?:\.\d+)?),)?")
+_H3_LABEL = re.compile(r"<(Subject|Picture|Video|Audio) (\d+)>")
+
+
+def h3_prompt_kind(system_prompt):
+    """'ref', 'base' or None, from the system prompt that asked for it."""
+    sp = system_prompt or ""
+    if "subject_definitions:" in sp and "retention_analysis:" in sp:
+        return "ref"
+    if all(f in sp for f in H3_BASE_FIELDS):
+        return "base"
+    return None
+
+
+def _field_positions(text, fields):
+    """Start of each field name at the start of a line, or -1."""
+    out = []
+    for f in fields:
+        m = re.search(r"(?m)^\s*" + re.escape(f), text)
+        out.append(m.start() if m else -1)
+    return out
+
+
+def _between(text, start_field, end_field):
+    a = re.search(r"(?m)^\s*" + re.escape(start_field), text)
+    if not a:
+        return ""
+    b = re.search(r"(?m)^\s*" + re.escape(end_field), text[a.end():]) if end_field else None
+    return text[a.end(): a.end() + b.start()] if b else text[a.end():]
+
+
+def check_h3_prompt(text, system_prompt, image_count=0):
+    """Problems with an H3 prompt written under one of the H3 system prompts
+    (empty list = looks right). Not a full validator: it catches the ways a
+    model that ignores the system prompt usually goes wrong."""
+    kind = h3_prompt_kind(system_prompt)
+    if kind is None:
+        return []
+    text = (text or "").strip().strip('"').strip()
+    problems = []
+    fields = H3_REF_FIELDS if kind == "ref" else H3_BASE_FIELDS
+    pos = _field_positions(text, fields)
+    missing = [f.rstrip(":") for f, p in zip(fields, pos) if p < 0]
+    if missing:
+        problems.append("missing section(s): " + ", ".join(missing))
+    present = [p for p in pos if p >= 0]
+    if present != sorted(present):
+        problems.append("sections are out of order (expected " + " -> ".join(f.rstrip(":") for f in fields) + ")")
+
+    first_line = text.splitlines()[0].strip() if text else ""
+    if kind == "base":
+        body = _between(text, "integrated_multimodal_description:", "overall_soundscape:")
+        if image_count == 0:
+            if not first_line.startswith("integrated_multimodal_description:"):
+                problems.append("text-to-video prompts start directly with 'integrated_multimodal_description:'")
+        elif image_count == 1:
+            if not (_H3_I2VA.match(first_line) or _H3_L2VA.match(first_line)):
+                problems.append("line 1 is not MiniMax's exact first-frame (or last-frame) alignment line with <Picture 1>")
+        else:
+            if not _H3_FL2VA.match(first_line):
+                problems.append("line 1 is not MiniMax's exact first-and-last-frame alignment line (Picture 1 ... Picture 2)")
+        if body and not re.match(r"\s*\[Shot 1\]", body):
+            problems.append("integrated_multimodal_description does not start with [Shot 1]")
+    else:
+        body = _between(text, "detailed_description:", "overall_soundscape:")
+        summary = _between(text, "summary:", "retention_analysis:").strip()
+        if summary and not summary.startswith("["):
+            problems.append("summary does not start with a [task type] prefix")
+        if body and "[Shot 1]" not in body:
+            problems.append("detailed_description has no [Shot 1]")
+        definitions = _between(text, "subject_definitions:", "summary:")
+        defined = {m.group(0) for m in _H3_LABEL.finditer(definitions)}
+        used = {m.group(0) for m in _H3_LABEL.finditer(text)}
+        undefined = sorted(l for l in used - defined if l.startswith("<Subject"))
+        if undefined:
+            problems.append("used but never defined in subject_definitions: " + ", ".join(undefined))
+        if image_count:
+            too_high = sorted({m.group(0) for m in _H3_LABEL.finditer(text)
+                               if m.group(1) == "Picture" and int(m.group(2)) > image_count})
+            if too_high:
+                problems.append(f"refers to {', '.join(too_high)} but only {image_count} image(s) are connected")
+
+    # Shots: numbered 1, 2, 3 ... with strictly increasing cut times
+    shots = [(int(m.group(1)), (int(m.group(2)) * 60 + float(m.group(3))) if m.group(2) else None)
+             for m in _H3_SHOT.finditer(body or "")]
+    numbers = [n for n, _t in shots]
+    if numbers and numbers != list(range(1, len(numbers) + 1)):
+        problems.append(f"shots are not numbered 1, 2, 3 ... ({numbers})")
+    times = [t for n, t in shots if n > 1]
+    if any(t is None for t in times):
+        problems.append("a shot after [Shot 1] has no 'At MM:SS.mmm,' cut time")
+    elif times and (times != sorted(times) or len(set(times)) != len(times) or times[-1] > 15):
+        problems.append("shot cut times are not strictly increasing within 15 seconds")
+
+    # A time that doesn't start a new shot ("... At 12.000, she ...")
+    all_times = len(re.findall(r"\bAt \d+(?::\d+)?\.\d+,", body or ""))
+    shot_times = len(re.findall(r"\[Shot \d+\]\s*At \d+(?::\d+)?\.\d+,", body or ""))
+    if all_times > shot_times:
+        problems.append("a time appears inside a shot; only a new shot gets one ('[Shot N] At MM:SS.mmm,')")
+
+    # Dialogue tags
+    opens, closes = text.count("<d>"), text.count("</d>")
+    if opens != closes:
+        problems.append(f"unbalanced dialogue tags (<d> x{opens}, </d> x{closes})")
+    if re.search(r"<d>(?!\s*\[)", text):
+        problems.append("a <d> block does not start with a [Language] tag")
+
+    # Music belongs in non_diegetic_music, not in the soundscape
+    soundscape = _between(text, "overall_soundscape:", "non_diegetic_music:")
+    if re.search(r"\b(music|score|soundtrack|melody)\b", soundscape, re.IGNORECASE):
+        problems.append("overall_soundscape mentions music; background music belongs in non_diegetic_music")
+    return problems
+
+
+def warn_h3_problems(text, system_prompt, image_count=0):
+    problems = check_h3_prompt(text, system_prompt, image_count)
+    if problems:
+        log.warning("GPromptsEnhanced: the MiniMax H3 prompt does not follow MiniMax's format:\n  - "
+                    + "\n  - ".join(problems)
+                    + "\nUsually the LLM ignored the system prompt (e.g. a Qwen-Image PE model). Use a "
+                      "general instruct model or Claude, or check the text before rendering.")
+    return problems
+
+
+def finalize_result(raw, finish, thinking, contract, max_new_tokens, system_prompt="", image_count=0):
     """Check and parse a finished generation (any backend)."""
     if thinking and "</think>" not in raw and finish == "length":
         raise RuntimeError(
@@ -872,6 +1013,8 @@ def finalize_result(raw, finish, thinking, contract, max_new_tokens):
               "cut off by max_new_tokens or the context length. The answer was:\n"
               + excerpt)
     log.debug(f"GPromptsEnhanced: parse_ok={result.parse_ok}, wh_ratio={result.wh_ratio!r}")
+    if not contract:
+        warn_h3_problems(result.prompt, system_prompt, image_count)
     return result
 
 
@@ -1088,6 +1231,24 @@ def edit_canvas(result, images, megapixels):
         h, w = int(images[i].shape[1]), int(images[i].shape[2])
         return canvas_size(f"{w}:{h}", megapixels)
     return canvas_size(result.wh_ratio, megapixels)
+
+
+def add_trigger_words(prompt, trigger_words):
+    """'ohwx woman, tkb_style' + prompt -> 'ohwx woman, tkb_style, <prompt>'.
+    Comma-separated entries the prompt already contains (whole words, any case)
+    are not added again."""
+    entries = [t.strip() for t in (trigger_words or "").split(",") if t.strip()]
+    missing = []
+    for t in entries:
+        if t.lower() in (m.lower() for m in missing):
+            continue
+        if not re.search(_anchor_pattern(t), prompt or "", re.IGNORECASE):
+            missing.append(t)
+    if not missing:
+        return prompt
+    prefix = ", ".join(missing)
+    prompt = (prompt or "").lstrip()
+    return f"{prefix}, {prompt}" if prompt else prefix
 
 
 def preserve_hint(anchors):
@@ -1404,6 +1565,12 @@ class GPromptsEnhanced(io.ComfyNode):
                 io.String.Input("text", multiline=True, default="",
                                 tooltip="Dynamic prompt, same syntax as Dynamic Prompts: {a|b} random, "
                                         "{{a|b}} sequential, __wildcard__, registers {{0 a|b}} / {{0}}."),
+                io.String.Input("trigger_words", default="", multiline=False,
+                                tooltip="LoRA trigger words, e.g. 'ohwx woman, tkb_style'. Added "
+                                        "to the start of the final prompt exactly as typed; never "
+                                        "sent to the LLM, so it can't drop or change them. Leave "
+                                        "them out of the text. Words the prompt already "
+                                        "contains are not added twice."),
                 io.Combo.Input("delimiter_style", options=styles,
                                default=DynamicPromptEngine.DEFAULT_DELIM_STYLE,
                                tooltip="'curly { }' or 'angle < >' (for JSON prompts)."),
@@ -1423,9 +1590,6 @@ class GPromptsEnhanced(io.ComfyNode):
                                        "the shape of the image it names in ratio_follow). 1.0 = "
                                        "1024x1024-sized; 4.0 = Qwen-Image 2.1's native 2K "
                                        "(2048x2048-sized). Sides are multiples of 16."),
-                io.String.Input("computed_prompt", multiline=True, default="", optional=True,
-                                extra_dict={"readonly": True},
-                                tooltip="The final prompt from the last run (read-only)."),
                 io.Combo.Input("enhance", options=ENHANCE_MODES, default=ENHANCE_EVERY_RUN,
                                tooltip="'every run': the LLM rewrites each run's expansion (one "
                                        "LLM call per image; always correct). 'once, then "
@@ -1529,8 +1693,8 @@ class GPromptsEnhanced(io.ComfyNode):
         return _Prefetch(iteration, expanded, values, seed, work)
 
     @classmethod
-    def execute(cls, enhancer, text, delimiter_style, seed, preserve_dynamic_words=True,
-                target_megapixels=DEFAULT_MEGAPIXELS, computed_prompt="",
+    def execute(cls, enhancer, text, delimiter_style, seed, trigger_words="",
+                preserve_dynamic_words=True, target_megapixels=DEFAULT_MEGAPIXELS,
                 enhance=ENHANCE_EVERY_RUN, prefetch_next=PREFETCH_AUTO,
                 images: io.Autogrow.Type = None) -> io.NodeOutput:
         unique_id = cls.hidden.unique_id
@@ -1608,6 +1772,11 @@ class GPromptsEnhanced(io.ComfyNode):
             final, warnings = substitute_values(state["result"].prompt, state["anchors"], values)
             for w in warnings:
                 log.warning(f"GPromptsEnhanced (node {unique_id}, iteration {iteration}): {w}")
+
+        # LoRA trigger words: in front, outside the LLM's reach. Not part of the
+        # batch key, so changing them never costs a new LLM call.
+        final = add_trigger_words(final, trigger_words)
+        expanded = add_trigger_words(expanded, trigger_words)
 
         engine.current_iteration += 1
         result = state["result"]

@@ -666,7 +666,8 @@ class APIPromptEnhancer(PromptEnhancerBase):
                 lambda prompt, max_tokens, stop_when: self._raw_stream(
                     prompt, max_tokens, stop_when, seed, api_key, pbar),
                 system_prompt, user_text, thinking, self.plan_tokens, self.max_new_tokens)
-            return finalize_result(raw, finish, thinking, contract, self.max_new_tokens)
+            return finalize_result(raw, finish, thinking, contract, self.max_new_tokens,
+                                   system_prompt=system_prompt, image_count=len(images))
 
         contract = PE_CONTRACT_KEY in system_prompt
 
@@ -680,7 +681,8 @@ class APIPromptEnhancer(PromptEnhancerBase):
         raw = content
         if reasoning and "</think>" not in content:
             raw = f"<think>{reasoning}</think>\n\n{content}"
-        return finalize_result(raw, finish, self.thinking == "on", contract, self.max_new_tokens)
+        return finalize_result(raw, finish, self.thinking == "on", contract, self.max_new_tokens,
+                               system_prompt=system_prompt, image_count=len(images))
 
 
 # ----------------------------------------------------------------------------

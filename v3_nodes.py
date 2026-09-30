@@ -12,7 +12,7 @@ from comfy_api.latest import io
 from comfy_extras.nodes_video import SaveVideo
 from comfy_extras.nodes_audio import SaveAudioAdvanced
 from .immich_importer import ImmichImporter
-from .comfyui_gprompts import get_last_prompt,parse_bool_setting,add_note_node_to_workflow,extract_computed_prompt,get_missing,get_immich_settings,get_settings_file,apply_settings,dprint,masked_settings
+from .comfyui_gprompts import get_last_prompt,parse_bool_setting,add_note_node_to_workflow,extract_computed_prompt,get_missing,get_immich_settings,get_settings_file,apply_settings,dprint,masked_settings,add_note_to_pnginfo
 from .common import get_logger
 
 log = get_logger("immich")
@@ -89,7 +89,6 @@ class GSaveAudioToImmich(SaveAudioAdvanced):
         image=None,notes="",album_name="",tags="") -> io.NodeOutput:
         # temp
         save_also=True
-        notes=None
         computed_prompt=None
         unique_id= cls.hidden.unique_id
         prompt = cls.hidden.prompt
@@ -118,7 +117,7 @@ class GSaveAudioToImmich(SaveAudioAdvanced):
             note_text = notes
         last_prompt = get_last_prompt(workflow_id)
         if not note_text and last_prompt:
-            note_text = f'Image created with prompt "{last_prompt}"'
+            note_text = f'Created with prompt "{last_prompt}"'
         #if not note_text and last_prompt:
         #    note_text = f'Image created with prompt "{last_prompt}"'
         #if "computed_prompt" not in extra_pnginfo_new:
@@ -130,8 +129,7 @@ class GSaveAudioToImmich(SaveAudioAdvanced):
             album_name = settings.get('immich_default_album')
         # Add note node to workflow
         if note_text and  "workflow" in extra_pnginfo_new:
-            workflow = extra_pnginfo_new["workflow"]
-            add_note_node_to_workflow(workflow, note_text)
+            workflow = add_note_to_pnginfo(extra_pnginfo_new, note_text)
         dprint(f"unique_id:{unique_id} workflow_id:{workflow_id} prompt:{prompt} ")
         dprint(f"extra_pnginfo:{extra_pnginfo}")
         dprint(f"workflow:{workflow}")
@@ -252,7 +250,6 @@ class GSaveVideoToImmich(SaveVideo):
                  notes="",album_name="",tags="") -> io.NodeOutput:
         # temp
         save_also=True
-        notes=None
         computed_prompt=None
         unique_id= cls.hidden.unique_id
         prompt = cls.hidden.prompt
@@ -276,7 +273,7 @@ class GSaveVideoToImmich(SaveVideo):
             note_text = notes
         last_prompt = get_last_prompt(workflow_id)
         if not note_text and last_prompt:
-            note_text = f'Image created with prompt "{last_prompt}"'
+            note_text = f'Created with prompt "{last_prompt}"'
         #if not note_text and last_prompt:
         #    note_text = f'Image created with prompt "{last_prompt}"'
         #if "computed_prompt" not in extra_pnginfo_new:
@@ -291,8 +288,7 @@ class GSaveVideoToImmich(SaveVideo):
 
         # Add note node to workflow
         if note_text and  "workflow" in extra_pnginfo_new:
-            workflow = extra_pnginfo_new["workflow"]
-            add_note_node_to_workflow(workflow, note_text)
+            workflow = add_note_to_pnginfo(extra_pnginfo_new, note_text)
 
 
         #TODO last_prompt = promtpForId.get(workflow_id)

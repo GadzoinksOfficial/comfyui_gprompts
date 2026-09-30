@@ -5,7 +5,7 @@ This package provides custom nodes for ComfyUI that enhance prompt generation, s
 
 ## Nodes Overview
 - **GPrompts** - Create dynamic prompts with random or sequential selection. Also supports wildcard files.
-- **Dynamic Prompts with Enhancer** + **Prompt Enhancer Loaders (GGUF / API, text-to-image / edit)** + **Enhancer Pair** - GPrompts plus an LLM prompt enhancer (e.g. the Qwen-Image-2.1 prompt rewriters), local GGUF or any Ollama/OpenAI-compatible/Anthropic API, for text-to-image and image editing, calling the LLM every run or once per batch.
+- **Dynamic Prompts with Enhancer** + **Prompt Enhancer Loaders (GGUF / API, text-to-image / edit)** + **Enhancer Pair** - GPrompts plus an LLM prompt enhancer (e.g. the Qwen-Image-2.1 prompt rewriters), local GGUF or any Ollama/OpenAI-compatible/Anthropic API, for text-to-image, image editing and MiniMax H3 video prompts, calling the LLM every run or once per batch.
 - **String Formatter** - Build custom output strings from multiple inputs and system variables.
 - **Save Image With Notes** - Save images with embedded workflow notes and metadata.
 - **Load Images From Folder** - Load images from a folder one at a time, in order, or randomly, and read back the prompt they were created with.
@@ -149,6 +149,15 @@ For `{{}}` sequential you will get all 4 seasons.
 Same dynamic prompt syntax as GPrompts, plus an LLM that rewrites the prompt into the long, detailed
 form image models like Qwen-Image 2.1 work best with.
 
+**Which models it suits:**
+- **Qwen-Image 2.1** - recommended; this is what it was built and tuned for, with the Qwen-Image
+  prompt rewriters (see *Getting the models*).
+- **MiniMax H3 video** - recommended; see *Video prompts for MiniMax H3* below.
+- **FLUX.2 (especially Klein)** - not recommended. FLUX, and Klein in particular, looks most
+  realistic with short, plain prompts; a detailed rewrite makes skin and surfaces glossy and
+  artificial. For FLUX, connect the `dynamic_prompt` output (your expansion, not rewritten) to the
+  text encoder instead of `text`, or use the plain Dynamic Prompts node.
+
 The **enhance** setting picks how often the LLM runs:
 
 - **every run** (default) - each run's expansion is sent to the LLM. One LLM call per image, and
@@ -188,13 +197,23 @@ In substitute mode, **preserve_dynamic_words** (on by default) asks the LLM to k
 verbatim. If it rewords one anyway ("cat" becomes "kitten"), that variation can't be swapped in; the
 console says so and that run keeps the first run's value.
 
+**LoRA trigger words** go in **trigger_words** (just below the text), not in the text: an LLM
+takes an unknown word like `ohwx` for a typo and drops or "corrects" it. The node adds them to the
+start of the final prompt exactly as typed, after the LLM has run, in every mode:
+`ohwx woman, tkb_style` + the LLM's "A woman in a red silk dress..." gives
+`ohwx woman, tkb_style, A woman in a red silk dress...`. Separate several with commas. One the
+prompt already contains is not added twice. Changing them never costs a new LLM call. Describe the
+subject in plain words in the text ("a woman in a bar") so the LLM writes a normal description. The
+start of the prompt is where most LoRAs expect their trigger, and where the image model pays most
+attention.
+
 Changing the text, delimiter style, `enhance` mode, any enhancer setting or a reference image starts
 the batch over. The seed does not: as in Dynamic Prompts it only picks the random blocks, so a seed
 set to randomize still steps through the combinations.
 
 ### Outputs
 - `text` / `computed_prompt` - the final prompt for this run
-- `dynamic_prompt` - this run's expansion before enhancement
+- `dynamic_prompt` - this run's expansion before enhancement (with the trigger words in front too)
 - `seed`
 - `template` - the prompt exactly as typed, dynamic blocks and all
 - `wh_ratio` - aspect ratio recommended by the LLM (e.g. `16:9`), empty if none
@@ -373,6 +392,52 @@ own latent output** for the sampler (it is sized from the first reference; any o
 edit). In **once, then substitute** mode the images stay fixed for the batch while the dynamic
 blocks vary the instruction, so the batch costs one LLM call; changing an image starts a new one.
 
+### Video prompts for MiniMax H3
+MiniMax H3 (Hailuo 3) generates video with sound, and expects a structured prompt: labelled
+sections for the picture timeline, the soundscape and the music, shot timestamps, camera terms,
+`<Picture 1>`-style reference labels and `<d>[English] ...</d>` dialogue tags. The folder
+`system_prompts/minimax_h3/` in this pack has three system prompts, written from MiniMax's official
+prompt-writing guide, that turn a short request into that format:
+
+| System prompt | For | Loader | H3 node |
+|---|---|---|---|
+| `h3_t2va_system_prompt.txt` | text-to-video | Prompt Enhancer Loader (API) or (GGUF) | H3 Text to Video |
+| `h3_frames_system_prompt.txt` | first frame, last frame, or both | ... (API, edit) or (GGUF, edit) | H3 First-Last-Frame to Video |
+| `h3_reference_system_prompt.txt` | reference-to-video (up to 9 images, plus videos/audio) | ... (API, edit) or (GGUF, edit) | H3 Reference to Video |
+
+**Setup**
+1. Copy the three files to `ComfyUI/models/LLM/h3/` and refresh the browser page.
+2. Pick one on the loader's `system_prompt`. These prompts ask for plain text, not JSON: the node uses
+   the whole answer, and `wh_ratio` / `width` / `height` don't apply (the H3 node sets the size).
+3. Connect `text` to the H3 node's prompt input.
+
+**Wiring**
+- **Frames and reference images go to both nodes, in the same order**: `image_1`, `image_2`, ... on
+  Dynamic Prompts with Enhancer (so the LLM sees them), and the first/last frame or reference image
+  inputs on the H3 node. For frames: one image = first frame (say "last frame" in the text if it is
+  the last one), two images = first and last.
+- **Reference videos and audio** go to the H3 node only; mention them in your text ("the dance from
+  video 1", "her voice from audio 1"). The LLM can't watch or hear them and works from your words.
+- **Duration**: the prompt's shot timings must fit the video. Write the length in your text if it
+  isn't 5 seconds ("8 seconds: ...") and set the same duration on the H3 node.
+- **Leave `trigger_words` empty**: H3's prompt must start with its own first line or section.
+- Use `enhance` = every run; thinking can stay off.
+
+**Which LLM**
+- **Claude** (Anthropic messages, e.g. `claude-haiku-4-5-20251001`) follows the format reliably and
+  sees your images; roughly half a cent to a cent per prompt.
+- **Local**: a general vision model through the GGUF edit loader, e.g. a Qwen3.5-9B instruct GGUF with
+  its mmproj. Set `keep_loaded` off so it leaves the GPU before H3 loads, or run it on another machine
+  (llama-server with `--mmproj`) behind the API edit loader. Small models handle text-to-video and
+  frames well but may slip on the long six-section reference format.
+- **MiniMax's own enhancer** is also built into ComfyUI: *MiniMax H3 Context IR (Prompt Enhancer)*.
+  It writes the same format and can also watch reference videos and hear audio, but runs on Comfy
+  credits (about $0.05-0.11 per call).
+
+**H3 itself** runs either as ComfyUI's built-in MiniMax H3 partner nodes (online, Comfy account and
+credits) or locally with the open weights and ComfyUI's native H3 workflows (see the ComfyUI docs;
+it is a 33B model, so plan on a 24 GB GPU with the INT8/Q5 files, or 16 GB with Q3/Q4/INT4).
+
 ### Warnings
 - **every run costs one LLM call per image.** With thinking on, that can take longer than the image
   itself; use `prefetch_next` (API or CPU), a lower `plan_tokens`, or thinking off. On a paid API,
@@ -390,6 +455,8 @@ blocks vary the instruction, so the batch costs one LLM call; changing an image 
 - **Node values are saved into workflows and image metadata.** That is why API keys only go in
   Settings > Gadzoinks > LLM; the node refuses `extra_json` or `api_key_name` values that look like
   a key.
+- **The H3 video prompts and the image prompts are not interchangeable either**: an H3 system prompt
+  with an image model (or the other way round) gives a useless prompt.
 - **The edit and text-to-image files are not interchangeable.** The PE-I2I model with the T2I system
   prompt (or the other way round) gives poor or broken prompts.
 

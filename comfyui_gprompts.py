@@ -7,6 +7,7 @@ https://github.com/GadzoinksOfficial/comfyui_gprompts
 import time
 import os
 import re
+import copy
 import json
 import random
 import socket
@@ -330,29 +331,88 @@ def extract_computed_prompt(data):
     
     return None
 
-def add_note_node_to_workflow( workflow, note_text=None):
-    """Helper to add a note node to workflow"""
-    nodes = workflow.get("nodes", [])
+NOTE_WIDTH = 425
+NOTE_MIN_HEIGHT = 120
+NOTE_MAX_HEIGHT = 600
+NOTE_GAP = 60          # space between the note and the node below it (clears that node's title bar)
 
-    # Get next available node ID
+
+def _xy(value, default=(0.0, 0.0)):
+    """A LiteGraph pos/size: [x, y] or the older {"0": x, "1": y}."""
+    try:
+        if isinstance(value, dict):
+            return float(value.get("0", value.get(0))), float(value.get("1", value.get(1)))
+        return float(value[0]), float(value[1])
+    except (TypeError, ValueError, IndexError, KeyError, AttributeError):
+        return default
+
+
+def _note_height(note_text):
+    """Roughly fit the note to its text (about 55 characters per line, 18 px per line)."""
+    lines = 0
+    for line in str(note_text or "").splitlines() or [""]:
+        lines += max(1, -(-len(line) // 55))
+    return int(min(NOTE_MAX_HEIGHT, max(NOTE_MIN_HEIGHT, 40 + lines * 18)))
+
+
+def note_position(workflow, height):
+    """Just above the topmost node, lined up with it. Groups count too, so the
+    note never covers a group title. Empty workflow: the old top-left spot."""
+    tops = []
+    for node in workflow.get("nodes", []) or []:
+        if "pos" in node:
+            x, y = _xy(node.get("pos"))
+            tops.append((y, x))
+    for group in workflow.get("groups", []) or []:
+        bounding = group.get("bounding") if isinstance(group, dict) else None
+        if isinstance(bounding, (list, tuple)) and len(bounding) >= 2:
+            try:
+                tops.append((float(bounding[1]), float(bounding[0])))
+            except (TypeError, ValueError):
+                pass
+    if not tops:
+        return [50, 50]
+    top_y, top_x = min(tops)
+    return [round(top_x), round(top_y - height - NOTE_GAP)]
+
+
+def add_note_to_pnginfo(extra_pnginfo, note_text):
+    """Give this save its own copy of the workflow with the note added, and
+    return it. ComfyUI passes the same workflow object to every save node in a
+    run, so adding to it in place leaks one node's note into the next save
+    (e.g. a video's note showing up in the last-frame image as a second note)."""
+    workflow = copy.deepcopy(extra_pnginfo["workflow"])
+    add_note_node_to_workflow(workflow, note_text)
+    extra_pnginfo["workflow"] = workflow
+    return workflow
+
+
+def add_note_node_to_workflow( workflow, note_text=None):
+    """Add a Note node holding note_text, just above the topmost node
+    (in place: pass a copy, see add_note_to_pnginfo)."""
+    nodes = workflow.setdefault("nodes", [])
+
+    # Next free node id (ComfyUI ids are numbers; last_node_id must cover it)
     max_id = 0
     for node in nodes:
-        node_id = node.get("id", "0")
         try:
-            node_id_int = int(node_id)
-            max_id = max(max_id, node_id_int)
+            max_id = max(max_id, int(node.get("id", 0)))
         except (ValueError, TypeError):
             continue
+    try:
+        max_id = max(max_id, int(workflow.get("last_node_id") or 0))
+    except (ValueError, TypeError):
+        pass
+    note_node_id = max_id + 1
 
-    note_node_id = str(max_id + 1)
-    # Create note node
+    height = _note_height(note_text)
     note_node = {
         "id": note_node_id,
         "type": "Note",
-        "pos": [50, 50],  # Top-left corner
-        "size": {"0": 425, "1": 180},
+        "pos": note_position(workflow, height),
+        "size": [NOTE_WIDTH, height],
         "flags": {},
-        "order": len(nodes) + 1,
+        "order": len(nodes),
         "mode": 0,
         "inputs": [],
         "outputs": [],
@@ -360,7 +420,8 @@ def add_note_node_to_workflow( workflow, note_text=None):
         "widgets_values": [note_text]
     }
 
-    workflow["nodes"].append(note_node)
+    nodes.append(note_node)
+    workflow["last_node_id"] = note_node_id
 
 def extract_exif(image):
     """Extract metadata from image including ComfyUI prompt data"""
@@ -641,8 +702,7 @@ class GImageSaveWithExtraMetadata(SaveImage):
 
         # Add note node to workflow
         if note_text and prompt and "workflow" in extra_pnginfo_new:
-            workflow = extra_pnginfo_new["workflow"]
-            add_note_node_to_workflow(workflow, note_text)
+            workflow = add_note_to_pnginfo(extra_pnginfo_new, note_text)
 
         # Save image
         saved = super().save_images(image, filename_prefix, prompt, extra_pnginfo_new)
@@ -778,8 +838,7 @@ class GImageSaveImmich(SaveImage):
 
         # Add note node to workflow
         if note_text and  "workflow" in extra_pnginfo_new:
-            workflow = extra_pnginfo_new["workflow"]
-            add_note_node_to_workflow(workflow, note_text)
+            workflow = add_note_to_pnginfo(extra_pnginfo_new, note_text)
 
         # Save image (always use save_images() to create EXIF and workflow data)
         #dprint(f"extra_pnginfo_new:\n:{extra_pnginfo_new}")
