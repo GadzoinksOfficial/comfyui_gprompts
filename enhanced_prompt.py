@@ -646,8 +646,9 @@ class GGUFPromptEnhancer(PromptEnhancerBase):
     def __init__(self, model_path, system_prompt_path, context_length, max_new_tokens,
                  gpu_layers, temperature, top_p, top_k, presence_penalty,
                  enable_thinking, plan_tokens, keep_loaded, flash_attn,
-                 mmproj_path=None, image_megapixels=None, task=TASK_T2I):
+                 mmproj_path=None, image_megapixels=None, task=TASK_T2I, second_try=False):
         self.model_path = model_path
+        self.second_try = second_try
         self.system_prompt_path = system_prompt_path
         self.context_length = context_length
         self.max_new_tokens = max_new_tokens
@@ -679,7 +680,7 @@ class GGUFPromptEnhancer(PromptEnhancerBase):
             self.model_path, self.system_prompt_path, sp_stamp, self.context_length,
             self.max_new_tokens, self.temperature, self.top_p, self.top_k,
             self.presence_penalty, self.enable_thinking, self.plan_tokens,
-            self.mmproj_path, self.image_megapixels, self.task,
+            self.mmproj_path, self.image_megapixels, self.task, self.second_try,
         ])
 
     def _check_room(self, n_prompt, what="prompt"):
@@ -760,9 +761,17 @@ class GGUFPromptEnhancer(PromptEnhancerBase):
 
     def enhance(self, user_text, seed, images=None):
         with _LLM_LOCK:
-            return self._enhance(user_text, seed, images)
+            if not self.second_try:
+                return self._enhance(user_text, seed, images)
+            try:    # keep the model loaded between the two tries
+                return with_second_try(
+                    lambda text: self._enhance(text, seed, images, warn=False, unload=False),
+                    user_text, self._system_prompt(), len(images or []))
+            finally:
+                if not self.keep_loaded:
+                    unload_llm()
 
-    def _enhance(self, user_text, seed, images=None):
+    def _enhance(self, user_text, seed, images=None, warn=True, unload=True):
         _require_llama_cpp()
         images = list(images or [])
         if images and not self.mmproj_path:
@@ -774,7 +783,7 @@ class GGUFPromptEnhancer(PromptEnhancerBase):
                        self.mmproj_path)
 
         sampling = {
-            "temperature": self.temperature,
+            "temperature": h3_temperature(self.temperature, system_prompt),
             "top_p": self.top_p,
             "top_k": self.top_k,
             "min_p": 0.0,
@@ -806,10 +815,10 @@ class GGUFPromptEnhancer(PromptEnhancerBase):
                 stream, system_prompt, user_text, thinking, self.plan_tokens,
                 self.max_new_tokens, image_count=len(images))
         finally:
-            if not self.keep_loaded:
+            if unload and not self.keep_loaded:
                 unload_llm()
         return finalize_result(raw, finish, thinking, contract, self.max_new_tokens,
-                               system_prompt=system_prompt, image_count=len(images))
+                               system_prompt=system_prompt, image_count=len(images), warn=warn)
 
 
 def run_raw_generation(stream_raw, system_prompt, user_text, thinking, plan_tokens,
@@ -873,6 +882,22 @@ _H3_L2VA = re.compile(r"^How the reference pictures align with the target video 
                       r"\(from \[Shot (\d+)\]\) aligns with the (\d+\.\d\d)-second mark of the target video\.$")
 _H3_SHOT = re.compile(r"\[Shot (\d+)\](?:\s*At (\d+):(\d+(?:\.\d+)?),)?")
 _H3_LABEL = re.compile(r"<(Subject|Picture|Video|Audio) (\d+)>")
+# H3 renders 17k+5 frames at 24 fps (ComfyUI's nodes_minimax_h3.py snaps the latent length up to
+# that grid); the trained range is 124-362 frames, i.e. these 15 lengths from 5.17 s to 15.08 s.
+H3_LENGTHS = tuple((124 + 17 * k) / 24 for k in range(15))
+H3_MAX_SECONDS = H3_LENGTHS[-1]
+
+
+def _h3_seconds(x):
+    """Two decimals, half up, as MiniMax writes S.SS (10.125 -> '10.13')."""
+    return f"{int(x * 100 + 0.5) / 100:.2f}"
+
+
+H3_MIN_SHOT = 1.2           # a shorter shot reads as a glitch, not a cut
+H3_CUT_PHRASES = ("the camera cuts to", "the shot cuts to", "the shot transitions to",
+                  "the shot changes to", "the shot switches to")
+_H3_CUT = re.compile("|".join([re.escape(p) for p in H3_CUT_PHRASES]
+                              + [r"cross[- ]?dissolve", r"\bfades?\b", r"\bwipes?\b"]), re.IGNORECASE)
 
 
 def h3_prompt_kind(system_prompt):
@@ -921,17 +946,31 @@ def check_h3_prompt(text, system_prompt, image_count=0):
         problems.append("sections are out of order (expected " + " -> ".join(f.rstrip(":") for f in fields) + ")")
 
     first_line = text.splitlines()[0].strip() if text else ""
+    length, last_shot = None, None      # from an FL2VA/L2VA alignment line
     if kind == "base":
         body = _between(text, "integrated_multimodal_description:", "overall_soundscape:")
         if image_count == 0:
             if not first_line.startswith("integrated_multimodal_description:"):
                 problems.append("text-to-video prompts start directly with 'integrated_multimodal_description:'")
         elif image_count == 1:
-            if not (_H3_I2VA.match(first_line) or _H3_L2VA.match(first_line)):
+            m = _H3_L2VA.match(first_line)
+            if not (_H3_I2VA.match(first_line) or m):
                 problems.append("line 1 is not MiniMax's exact first-frame (or last-frame) alignment line with <Picture 1>")
         else:
-            if not _H3_FL2VA.match(first_line):
+            m = _H3_FL2VA.match(first_line)
+            if not m:
                 problems.append("line 1 is not MiniMax's exact first-and-last-frame alignment line (Picture 1 ... Picture 2)")
+        if image_count and m:
+            last_shot, length = int(m.group(1)), float(m.group(2))
+            # Local H3 renders the grid lengths; the online nodes take whole seconds (4-15),
+            # which MiniMax's own L2VA example uses (6.00).
+            on_grid = any(abs(length - s) < 0.006 for s in H3_LENGTHS)
+            whole = length == int(length) and 4 <= length <= 15
+            if not (on_grid or whole):
+                nearest = min((s for s in H3_LENGTHS if s >= length - 0.006), default=H3_MAX_SECONDS)
+                problems.append(f"line 1 says {length:.2f} s, which is not a length H3 renders; locally the "
+                                f"next one up is {_h3_seconds(nearest)} s ({round(nearest * 24)} frames), online a "
+                                f"whole number of seconds")
         if body and not re.match(r"\s*\[Shot 1\]", body):
             problems.append("integrated_multimodal_description does not start with [Shot 1]")
     else:
@@ -959,11 +998,30 @@ def check_h3_prompt(text, system_prompt, image_count=0):
     numbers = [n for n, _t in shots]
     if numbers and numbers != list(range(1, len(numbers) + 1)):
         problems.append(f"shots are not numbered 1, 2, 3 ... ({numbers})")
+    if last_shot is not None and numbers and last_shot != numbers[-1]:
+        problems.append(f"line 1 aligns the frame with Shot {last_shot}, but the last shot is [Shot {numbers[-1]}]")
     times = [t for n, t in shots if n > 1]
+    end = length or H3_MAX_SECONDS
     if any(t is None for t in times):
         problems.append("a shot after [Shot 1] has no 'At MM:SS.mmm,' cut time")
-    elif times and (times != sorted(times) or len(set(times)) != len(times) or times[-1] > 15):
-        problems.append("shot cut times are not strictly increasing within 15 seconds")
+    elif times and (times != sorted(times) or len(set(times)) != len(times)):
+        problems.append("shot cut times are not strictly increasing")
+    elif times and times[-1] >= end:
+        problems.append(f"a cut at {times[-1]:.3f} s is past the end of the video ({end:.2f} s)")
+    elif times:
+        starts = [0.0] + times + ([length] if length else [])
+        short = [(a, b) for a, b in zip(starts, starts[1:]) if b - a < H3_MIN_SHOT - 1e-6]
+        if short:
+            a, b = short[0]
+            problems.append(f"a shot from {a:.3f} s to {b:.3f} s lasts under {H3_MIN_SHOT} s; "
+                            "a cut that short reads as a glitch")
+
+    # Every later shot opens with one of MiniMax's cut phrases
+    for m in re.finditer(r"\[Shot (\d+)\]\s*At \d+:\d+(?:\.\d+)?,?(.{0,160})", body or "", re.DOTALL):
+        if int(m.group(1)) > 1 and not _H3_CUT.search(m.group(2)):
+            problems.append(f"[Shot {m.group(1)}] does not open with one of MiniMax's cut phrases ("
+                            + ", ".join(f"'{p}'" for p in H3_CUT_PHRASES) + ")")
+            break
 
     # A time that doesn't start a new shot ("... At 12.000, she ...")
     all_times = len(re.findall(r"\bAt \d+(?::\d+)?\.\d+,", body or ""))
@@ -995,8 +1053,67 @@ def warn_h3_problems(text, system_prompt, image_count=0):
     return problems
 
 
-def finalize_result(raw, finish, thinking, contract, max_new_tokens, system_prompt="", image_count=0):
-    """Check and parse a finished generation (any backend)."""
+H3_TEMPERATURE = 0.3        # low: the binding constraint on an H3 prompt is keeping the format
+LOADER_DEFAULT_TEMPERATURE = 1.0
+_h3_temperature_logged = set()
+
+
+def h3_temperature(temperature, system_prompt, fixed=False):
+    """The temperature to sample with. With an H3 system prompt and the loader's temperature
+    left at its default (1.0), use H3_TEMPERATURE; any other value on the loader is kept.
+    fixed=True: the backend requires 1.0 (Anthropic with thinking on)."""
+    if fixed or abs(temperature - LOADER_DEFAULT_TEMPERATURE) > 1e-6 or not h3_prompt_kind(system_prompt):
+        return temperature
+    key = hash(system_prompt)
+    if key not in _h3_temperature_logged:
+        _h3_temperature_logged.add(key)
+        log.info(f"GPromptsEnhanced: MiniMax H3 system prompt with the loader's default temperature "
+                 f"{LOADER_DEFAULT_TEMPERATURE}: using {H3_TEMPERATURE}, which keeps the model on H3's "
+                 f"format. Set any other temperature on the loader to use that instead.")
+    return H3_TEMPERATURE
+
+
+def h3_retry_request(user_text, previous, problems):
+    """The request for a second try: the problems, the failed answer, then the original
+    request last (so a trailing keep-words note stays at the end)."""
+    return ("Your previous answer to the request below does not follow the required format:\n- "
+            + "\n- ".join(problems)
+            + "\n\nYour previous answer was:\n\n" + (previous or "").strip()
+            + "\n\nWrite the whole prompt again: fix these problems, keep everything else that was "
+              "right, and output only the corrected prompt. The request:\n\n" + user_text)
+
+
+def with_second_try(once, user_text, system_prompt, image_count):
+    """'2nd try on error': once(text) -> EnhanceResult, called with warn=False by the
+    enhancer. If the answer fails the H3 format check, ask once more with the problems
+    listed, and keep whichever answer has fewer problems (the first on a tie)."""
+    first = once(user_text)
+    problems = check_h3_prompt(first.prompt, system_prompt, image_count)
+    if not problems:
+        return first
+    check_interrupted()
+    log.info(f"GPromptsEnhanced: 2nd try: the H3 prompt has {len(problems)} format problem(s); "
+             f"sending them back to the LLM")
+    log.debug("GPromptsEnhanced: 2nd try, first answer's problems:\n  - " + "\n  - ".join(problems))
+    try:
+        second = once(h3_retry_request(user_text, first.prompt, problems))
+    except RuntimeError as e:
+        log.warning(f"GPromptsEnhanced: 2nd try failed ({e}); keeping the first answer")
+        warn_h3_problems(first.prompt, system_prompt, image_count)
+        return first
+    problems2 = check_h3_prompt(second.prompt, system_prompt, image_count)
+    use_second = len(problems2) < len(problems)
+    log.info(f"GPromptsEnhanced: 2nd try: {len(problems)} -> {len(problems2)} problem(s); using the "
+             + ("second answer" if use_second else "first answer"))
+    chosen = second if use_second else first
+    warn_h3_problems(chosen.prompt, system_prompt, image_count)
+    return chosen
+
+
+def finalize_result(raw, finish, thinking, contract, max_new_tokens, system_prompt="", image_count=0,
+                    warn=True):
+    """Check and parse a finished generation (any backend). warn=False: leave the H3
+    format warning to the caller (with_second_try)."""
     if thinking and "</think>" not in raw and finish == "length":
         raise RuntimeError(
             f"The LLM used all {max_new_tokens} tokens while still thinking. "
@@ -1013,7 +1130,7 @@ def finalize_result(raw, finish, thinking, contract, max_new_tokens, system_prom
               "cut off by max_new_tokens or the context length. The answer was:\n"
               + excerpt)
     log.debug(f"GPromptsEnhanced: parse_ok={result.parse_ok}, wh_ratio={result.wh_ratio!r}")
-    if not contract:
+    if not contract and warn:
         warn_h3_problems(result.prompt, system_prompt, image_count)
     return result
 
@@ -1268,6 +1385,10 @@ def preserve_hint(anchors):
 # ----------------------------------------------------------------------------
 PromptEnhancerType = io.Custom("GPROMPT_ENHANCER")
 
+SECOND_TRY_TIP = ("MiniMax H3 system prompts only: when the answer fails the H3 format check, send "
+                  "the problems back to the LLM once and keep whichever answer has fewer problems. "
+                  "Costs a second LLM call, and only when the first answer fails.")
+
 
 class GPromptEnhancerLoaderGGUF(io.ComfyNode):
     @classmethod
@@ -1321,6 +1442,8 @@ class GPromptEnhancerLoaderGGUF(io.ComfyNode):
                                          "its VRAM right after each enhancement."),
                 io.Boolean.Input("flash_attn", default=True, advanced=True,
                                  tooltip="Use flash attention (less VRAM for long contexts)."),
+                io.Boolean.Input("second_try", display_name="2nd try on error", default=False,
+                                 tooltip=SECOND_TRY_TIP),
             ],
             outputs=[PromptEnhancerType.Output("enhancer", display_name="enhancer")],
         )
@@ -1337,7 +1460,7 @@ class GPromptEnhancerLoaderGGUF(io.ComfyNode):
     @classmethod
     def execute(cls, model, system_prompt, context_length, max_new_tokens, gpu_layers,
                 temperature, top_p, top_k, presence_penalty, enable_thinking,
-                plan_tokens, keep_loaded, flash_attn=True) -> io.NodeOutput:
+                plan_tokens, keep_loaded, flash_attn=True, second_try=False) -> io.NodeOutput:
         enhancer = GGUFPromptEnhancer(
             model_path=resolve_llm_file(model),
             system_prompt_path=resolve_llm_file(system_prompt),
@@ -1352,6 +1475,7 @@ class GPromptEnhancerLoaderGGUF(io.ComfyNode):
             plan_tokens=plan_tokens,
             keep_loaded=keep_loaded,
             flash_attn=flash_attn,
+            second_try=second_try,
         )
         if not keep_loaded:
             unload_llm()
@@ -1412,6 +1536,8 @@ class GPromptEnhancerLoaderGGUFEdit(io.ComfyNode):
                                        "gets the originals."),
                 io.Boolean.Input("keep_loaded", default=True),
                 io.Boolean.Input("flash_attn", default=True, advanced=True),
+                io.Boolean.Input("second_try", display_name="2nd try on error", default=False,
+                                 tooltip=SECOND_TRY_TIP),
             ],
             outputs=[PromptEnhancerType.Output("enhancer", display_name="enhancer")],
         )
@@ -1431,14 +1557,14 @@ class GPromptEnhancerLoaderGGUFEdit(io.ComfyNode):
     @classmethod
     def execute(cls, model, mmproj, system_prompt, context_length, max_new_tokens, gpu_layers,
                 temperature, top_p, top_k, presence_penalty, enable_thinking, plan_tokens,
-                llm_image_megapixels, keep_loaded, flash_attn=True) -> io.NodeOutput:
+                llm_image_megapixels, keep_loaded, flash_attn=True, second_try=False) -> io.NodeOutput:
         enhancer = GGUFPromptEnhancer(
             model_path=resolve_llm_file(model), system_prompt_path=resolve_llm_file(system_prompt),
             context_length=context_length, max_new_tokens=max_new_tokens, gpu_layers=gpu_layers,
             temperature=temperature, top_p=top_p, top_k=top_k, presence_penalty=presence_penalty,
             enable_thinking=enable_thinking, plan_tokens=plan_tokens, keep_loaded=keep_loaded,
             flash_attn=flash_attn, mmproj_path=resolve_llm_file(mmproj),
-            image_megapixels=llm_image_megapixels, task=TASK_EDIT)
+            image_megapixels=llm_image_megapixels, task=TASK_EDIT, second_try=second_try)
         if not keep_loaded:
             unload_llm()
         return io.NodeOutput(enhancer)

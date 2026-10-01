@@ -419,9 +419,32 @@ prompt-writing guide, that turn a short request into that format:
 - **Reference videos and audio** go to the H3 node only; mention them in your text ("the dance from
   video 1", "her voice from audio 1"). The LLM can't watch or hear them and works from your words.
 - **Duration**: the prompt's shot timings must fit the video. Write the length in your text if it
-  isn't 5 seconds ("8 seconds: ...") and set the same duration on the H3 node.
+  isn't the default ("10 seconds: ..."); the LLM rounds it up to the next length H3 renders (table
+  below). Set the matching `length` (frames) on the local H3 latent node; the online H3 nodes take
+  whole seconds, so set the same number there (a fraction of a second difference doesn't matter).
 - **Leave `trigger_words` empty**: H3's prompt must start with its own first line or section.
 - Use `enhance` = every run; thinking can stay off.
+- **Temperature**: with an H3 system prompt and the loader's `temperature` left at its default 1.0,
+  the node samples at 0.3, which keeps the model on the format. Any other value you set is used as
+  it is (Claude with thinking on always runs at 1.0).
+- **Format check**: after each rewrite the node checks the answer against MiniMax's format (sections
+  and their order, the first line, shot numbers and cut times, shots of at least 1.2 s, cut phrases,
+  dialogue tags, labels, music in the soundscape) and logs a warning listing anything off. It never
+  changes the prompt; read the warning and re-queue or edit the text.
+- **2nd try on error** (loader toggle, default off): when the check finds problems, the node sends
+  them back to the LLM with its answer and asks for a corrected prompt, once. It keeps whichever
+  answer has fewer problems (the first on a tie) and logs `2nd try: 3 -> 0 problem(s); using the
+  second answer`. It costs a second LLM call, only when the first answer fails; on Claude the system
+  prompt and images come from the prompt cache. It only applies to the H3 system prompts.
+
+Local H3 renders 17k+5 frames at 24 fps (ComfyUI snaps the latent `length` up to that), and was
+trained on 124-362 frames. The lengths it can make:
+
+| Seconds | 5.17 | 5.88 | 6.58 | 7.29 | 8.00 | 8.71 | 9.42 | 10.13 | 10.83 | 11.54 | 12.25 | 12.96 | 13.67 | 14.38 | 15.08 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Frames | 124 | 141 | 158 | 175 | 192 | 209 | 226 | 243 | 260 | 277 | 294 | 311 | 328 | 345 | 362 |
+
+With no length in your text the prompt is written for 5.17 s (124 frames, the H3 node's default).
 
 **Which LLM**
 - **Claude** (Anthropic messages, e.g. `claude-haiku-4-5-20251001`) follows the format reliably and

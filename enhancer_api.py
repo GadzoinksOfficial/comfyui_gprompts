@@ -55,7 +55,8 @@ from .enhanced_prompt import (
     list_llm_files, resolve_llm_file, SYSTEM_PROMPT_EXTENSIONS,
     TASK_T2I, TASK_EDIT, LLM_IMAGE_MEGAPIXELS, DEFAULT_LLM_IMAGE_MP,
     image_for_llm, pil_to_jpeg_b64, prepared_image,
-    interrupted, check_interrupted, progress_bar,
+    interrupted, check_interrupted, progress_bar, h3_temperature,
+    with_second_try, SECOND_TRY_TIP,
 )
 
 log = get_logger("enhancer.api")
@@ -375,8 +376,9 @@ class APIPromptEnhancer(PromptEnhancerBase):
     def __init__(self, api, base_url, model, api_key_name, system_prompt_path, thinking,
                  thinking_field, plan_tokens, max_new_tokens, context_length, temperature,
                  top_p, top_k, min_p, presence_penalty, keep_alive, timeout, extra_json,
-                 task=TASK_T2I, image_megapixels=None):
+                 task=TASK_T2I, image_megapixels=None, second_try=False):
         self.task = task
+        self.second_try = second_try
         self.image_megapixels = image_megapixels or DEFAULT_LLM_IMAGE_MP
         self.api = api
         self.base_url = normalize_base_url(base_url, api)
@@ -389,6 +391,7 @@ class APIPromptEnhancer(PromptEnhancerBase):
         self.max_new_tokens = max_new_tokens
         self.context_length = context_length
         self.temperature = temperature
+        self._run_temperature = temperature     # per call: see h3_temperature
         self.top_p = top_p
         self.top_k = top_k
         self.min_p = min_p
@@ -412,7 +415,7 @@ class APIPromptEnhancer(PromptEnhancerBase):
             self.api, self.base_url, self.model, self.api_key_name, self.system_prompt_path,
             sp_stamp, self.thinking, self.thinking_field, self.plan_tokens, self.max_new_tokens,
             self.context_length, self.temperature, self.top_p, self.top_k, self.min_p,
-            self.presence_penalty, self.extra, self.task, self.image_megapixels,
+            self.presence_penalty, self.extra, self.task, self.image_megapixels, self.second_try,
         ], sort_keys=True)
 
     # -- request building --------------------------------------------------
@@ -435,7 +438,7 @@ class APIPromptEnhancer(PromptEnhancerBase):
     def _ollama_options(self, max_tokens, seed, stop=None):
         options = {
             "num_ctx": self.context_length, "num_predict": max_tokens,
-            "temperature": self.temperature, "top_p": self.top_p, "top_k": self.top_k,
+            "temperature": self._run_temperature, "top_p": self.top_p, "top_k": self.top_k,
             "min_p": self.min_p, "presence_penalty": self.presence_penalty,
             "repeat_penalty": 1.0, "seed": seed,
         }
@@ -460,7 +463,7 @@ class APIPromptEnhancer(PromptEnhancerBase):
         else:
             url = self.base_url + "/completions"
             payload = {"model": self.model, "prompt": prompt, "stream": True,
-                       "max_tokens": max_tokens, "temperature": self.temperature,
+                       "max_tokens": max_tokens, "temperature": self._run_temperature,
                        "top_p": self.top_p, "top_k": self.top_k, "min_p": self.min_p,
                        "presence_penalty": self.presence_penalty, "seed": seed,
                        "stop": STOP_STRINGS}
@@ -531,7 +534,7 @@ class APIPromptEnhancer(PromptEnhancerBase):
         if self.api == API_ANTHROPIC:
             url = self.base_url + "/v1/messages"
             payload = {"model": self.model, "max_tokens": self.max_new_tokens, "messages": messages,
-                       "stream": True, "temperature": self.temperature, "top_p": self.top_p,
+                       "stream": True, "temperature": self._run_temperature, "top_p": self.top_p,
                        "top_k": self.top_k}
             if system_prompt:
                 payload["system"] = system_prompt
@@ -558,7 +561,7 @@ class APIPromptEnhancer(PromptEnhancerBase):
             else:
                 url = self.base_url + "/chat/completions"
                 payload = {"model": self.model, "messages": messages, "stream": True,
-                           "max_tokens": self.max_new_tokens, "temperature": self.temperature,
+                           "max_tokens": self.max_new_tokens, "temperature": self._run_temperature,
                            "top_p": self.top_p, "top_k": self.top_k, "min_p": self.min_p,
                            "presence_penalty": self.presence_penalty, "seed": seed}
                 field = self.thinking_field
@@ -649,11 +652,20 @@ class APIPromptEnhancer(PromptEnhancerBase):
 
     # -- entry point ---------------------------------------------------------
     def enhance(self, user_text, seed, images=None):
+        if not self.second_try:
+            return self._enhance(user_text, seed, images)
+        return with_second_try(lambda text: self._enhance(text, seed, images, warn=False),
+                               user_text, self._system_prompt(), len(images or []))
+
+    def _enhance(self, user_text, seed, images=None, warn=True):
         images = list(images or [])
         if images and self.api in RAW_STYLES:
             raise RuntimeError(f"'{self.api}' can't send images; use a chat style "
                                f"({', '.join(CHAT_STYLES)}) for image editing.")
         system_prompt = self._system_prompt()
+        self._run_temperature = h3_temperature(
+            self.temperature, system_prompt,
+            fixed=(self.api == API_ANTHROPIC and self.thinking == "on"))
         api_key = resolve_api_key(self.api_key_name)
         pbar = progress_bar(self.max_new_tokens)
         log.info(f"GPromptsEnhanced: {self.api} -> {self.base_url} model={self.model}"
@@ -667,7 +679,7 @@ class APIPromptEnhancer(PromptEnhancerBase):
                     prompt, max_tokens, stop_when, seed, api_key, pbar),
                 system_prompt, user_text, thinking, self.plan_tokens, self.max_new_tokens)
             return finalize_result(raw, finish, thinking, contract, self.max_new_tokens,
-                                   system_prompt=system_prompt, image_count=len(images))
+                                   system_prompt=system_prompt, image_count=len(images), warn=warn)
 
         contract = PE_CONTRACT_KEY in system_prompt
 
@@ -682,7 +694,7 @@ class APIPromptEnhancer(PromptEnhancerBase):
         if reasoning and "</think>" not in content:
             raw = f"<think>{reasoning}</think>\n\n{content}"
         return finalize_result(raw, finish, self.thinking == "on", contract, self.max_new_tokens,
-                               system_prompt=system_prompt, image_count=len(images))
+                               system_prompt=system_prompt, image_count=len(images), warn=warn)
 
 
 # ----------------------------------------------------------------------------
@@ -785,7 +797,11 @@ def _api_schema(edit):
                                 tooltip="JSON merged into the request body for anything provider-"
                                         'specific, e.g. {"reasoning_effort": "low"} or '
                                         '{"options": {"num_gpu": 20}}. Do not put API keys here.'),
-            ] + extra_inputs,
+            ] + extra_inputs + [
+                # last, so saved workflows keep their widget positions
+                io.Boolean.Input("second_try", display_name="2nd try on error", default=False,
+                                 tooltip=SECOND_TRY_TIP),
+            ],
             outputs=[PromptEnhancerType.Output("enhancer", display_name="enhancer")],
         )
 
@@ -819,7 +835,7 @@ class GPromptEnhancerLoaderAPI(io.ComfyNode):
     @classmethod
     def execute(cls, api, base_url, model, api_key_name, system_prompt, thinking, thinking_field,
                 plan_tokens, max_new_tokens, context_length, temperature, top_p, top_k, min_p,
-                presence_penalty, keep_alive, timeout, extra_json) -> io.NodeOutput:
+                presence_penalty, keep_alive, timeout, extra_json, second_try=False) -> io.NodeOutput:
         sp_path = None if system_prompt == NO_SYSTEM_PROMPT else resolve_llm_file(system_prompt)
         return io.NodeOutput(APIPromptEnhancer(
             api=api, base_url=base_url, model=model, api_key_name=api_key_name,
@@ -827,7 +843,7 @@ class GPromptEnhancerLoaderAPI(io.ComfyNode):
             plan_tokens=plan_tokens, max_new_tokens=max_new_tokens, context_length=context_length,
             temperature=temperature, top_p=top_p, top_k=top_k, min_p=min_p,
             presence_penalty=presence_penalty, keep_alive=keep_alive, timeout=timeout,
-            extra_json=extra_json))
+            extra_json=extra_json, second_try=second_try))
 
 
 class GPromptEnhancerLoaderAPIEdit(GPromptEnhancerLoaderAPI):
@@ -839,7 +855,7 @@ class GPromptEnhancerLoaderAPIEdit(GPromptEnhancerLoaderAPI):
     def execute(cls, api, base_url, model, api_key_name, system_prompt, thinking, thinking_field,
                 plan_tokens, max_new_tokens, context_length, temperature, top_p, top_k, min_p,
                 presence_penalty, keep_alive, timeout, extra_json,
-                llm_image_megapixels=DEFAULT_LLM_IMAGE_MP) -> io.NodeOutput:
+                llm_image_megapixels=DEFAULT_LLM_IMAGE_MP, second_try=False) -> io.NodeOutput:
         sp_path = None if system_prompt == NO_SYSTEM_PROMPT else resolve_llm_file(system_prompt)
         return io.NodeOutput(APIPromptEnhancer(
             api=api, base_url=base_url, model=model, api_key_name=api_key_name,
@@ -847,7 +863,8 @@ class GPromptEnhancerLoaderAPIEdit(GPromptEnhancerLoaderAPI):
             plan_tokens=plan_tokens, max_new_tokens=max_new_tokens, context_length=context_length,
             temperature=temperature, top_p=top_p, top_k=top_k, min_p=min_p,
             presence_penalty=presence_penalty, keep_alive=keep_alive, timeout=timeout,
-            extra_json=extra_json, task=TASK_EDIT, image_megapixels=llm_image_megapixels))
+            extra_json=extra_json, task=TASK_EDIT, image_megapixels=llm_image_megapixels,
+            second_try=second_try))
 
 
 API_NODES = {"GPromptEnhancerLoaderAPI": GPromptEnhancerLoaderAPI,
