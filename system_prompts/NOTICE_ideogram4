@@ -1,0 +1,9 @@
+ideogram4_system_prompt.txt is adapted from Ideogram's open-source magic prompt
+(src/ideogram4/magic_prompt_system_prompts/v1.txt, https://github.com/ideogram-oss/ideogram4),
+Copyright Ideogram, licensed under the Apache License, Version 2.0
+(http://www.apache.org/licenses/LICENSE-2.0).
+
+Changes in this copy: the [META] and [USER] sections were removed (the node sends the request as
+the user message); the aspect ratio is read from the request text instead of a separate input; a
+dangling section reference was corrected; a section on JSON drafts as input was added; and rules
+for the node's keep-words note, adult subjects and a final format check were added at the end.
