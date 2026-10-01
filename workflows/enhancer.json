@@ -1,0 +1,1415 @@
+{
+  "id": "54bb395d-3e60-4c94-b525-85523901575b",
+  "revision": 0,
+  "last_node_id": 500,
+  "last_link_id": 741,
+  "nodes": [
+    {
+      "id": 463,
+      "type": "MarkdownNote",
+      "pos": [
+        -350,
+        2470
+      ],
+      "size": [
+        420,
+        620
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "Note: Model links",
+      "properties": {},
+      "widgets_values": [
+        "Guide: [Subgraph](https://docs.comfy.org/interface/features/subgraph)\n\n## Model Links\n\n- [Hugging Face:Comfy-Org/Qwen-Image-2.1](https://huggingface.co/Comfy-Org/Qwen-Image-2.1)\n- [ModelScope:Comfy-Org/Qwen-Image-2.1](https://modelscope.cn/models/Comfy-Org/Qwen-Image-2.1)\n\n**diffusion_models**\n\n- [qwen_image_2.1_bf16.safetensors](https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/diffusion_models/qwen_image_2.1_bf16.safetensors)\n- [qwen_image_2.1_int8_convrot.safetensors](https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/diffusion_models/qwen_image_2.1_int8_convrot.safetensors)\n\n**text_encoders**\n\n- [qwen3vl_8b_bf16.safetensors](https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/text_encoders/qwen3vl_8b_bf16.safetensors)\n- [qwen3vl_8b_int8_convrot.safetensors](https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/text_encoders/qwen3vl_8b_int8_convrot.safetensors) \n\n**vae**\n\n- [qwen_image_2.1_vae_bf16.safetensors](https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/vae/qwen_image_2.1_vae_bf16.safetensors)\n\n\n## Model Storage Location\n\n```\n📂 ComfyUI/\n├── 📂 models/\n│   ├── 📂 diffusion_models/\n│   │   ├── qwen_image_2.1_bf16.safetensors\n│   │   └── qwen_image_2.1_int8_convrot.safetensors\n│   ├── 📂 text_encoders/\n│   │   ├── qwen3vl_8b_bf16.safetensors\n│   │   └── qwen3vl_8b_int8_convrot.safetensors\n│   └── 📂 vae/\n│       └── qwen_image_2.1_vae_bf16.safetensors\n```\n\n## Report Issue\n\nNote: Please update ComfyUI first ([guide](https://docs.comfy.org/installation/update_comfyui)) and prepare required models. Desktop/Cloud updates follow stable releases, so some nightly-supported models may not be available yet.\n\n- Cannot run / runtime errors: [ComfyUI/issues](https://github.com/comfyanonymous/ComfyUI/issues)\n- UI / frontend issues: [ComfyUI_frontend/issues](https://github.com/Comfy-Org/ComfyUI_frontend/issues)\n- Workflow issues: [workflow_templates/issues](https://github.com/Comfy-Org/workflow_templates/issues)\n"
+      ],
+      "widgets_values_named": {
+        "text": "Guide: [Subgraph](https://docs.comfy.org/interface/features/subgraph)\n\n## Model Links\n\n- [Hugging Face:Comfy-Org/Qwen-Image-2.1](https://huggingface.co/Comfy-Org/Qwen-Image-2.1)\n- [ModelScope:Comfy-Org/Qwen-Image-2.1](https://modelscope.cn/models/Comfy-Org/Qwen-Image-2.1)\n\n**diffusion_models**\n\n- [qwen_image_2.1_bf16.safetensors](https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/diffusion_models/qwen_image_2.1_bf16.safetensors)\n- [qwen_image_2.1_int8_convrot.safetensors](https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/diffusion_models/qwen_image_2.1_int8_convrot.safetensors)\n\n**text_encoders**\n\n- [qwen3vl_8b_bf16.safetensors](https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/text_encoders/qwen3vl_8b_bf16.safetensors)\n- [qwen3vl_8b_int8_convrot.safetensors](https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/text_encoders/qwen3vl_8b_int8_convrot.safetensors) \n\n**vae**\n\n- [qwen_image_2.1_vae_bf16.safetensors](https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/vae/qwen_image_2.1_vae_bf16.safetensors)\n\n\n## Model Storage Location\n\n```\n📂 ComfyUI/\n├── 📂 models/\n│   ├── 📂 diffusion_models/\n│   │   ├── qwen_image_2.1_bf16.safetensors\n│   │   └── qwen_image_2.1_int8_convrot.safetensors\n│   ├── 📂 text_encoders/\n│   │   ├── qwen3vl_8b_bf16.safetensors\n│   │   └── qwen3vl_8b_int8_convrot.safetensors\n│   └── 📂 vae/\n│       └── qwen_image_2.1_vae_bf16.safetensors\n```\n\n## Report Issue\n\nNote: Please update ComfyUI first ([guide](https://docs.comfy.org/installation/update_comfyui)) and prepare required models. Desktop/Cloud updates follow stable releases, so some nightly-supported models may not be available yet.\n\n- Cannot run / runtime errors: [ComfyUI/issues](https://github.com/comfyanonymous/ComfyUI/issues)\n- UI / frontend issues: [ComfyUI_frontend/issues](https://github.com/Comfy-Org/ComfyUI_frontend/issues)\n- Workflow issues: [workflow_templates/issues](https://github.com/Comfy-Org/workflow_templates/issues)\n"
+      },
+      "color": "#222",
+      "bgcolor": "#000"
+    },
+    {
+      "id": 468,
+      "type": "MarkdownNote",
+      "pos": [
+        -241.44352507187642,
+        2170.922905547338
+      ],
+      "size": [
+        420,
+        220
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "Note: Usage",
+      "properties": {},
+      "widgets_values": [
+        "## Size\nQwen Image 2.1 has native 2K (2048*2048) support for direct output.\n\nOutput size comes from ResolutionSelector (width/height). Default is 1 megapixel (1024*1024). For native 2K, set 1:1 and 4 megapixels (2048*2048). Prefer multiples of 32.\n\n## Transparent Image\n\nTo generate a transparent image, wrap the prompt like this and replace the middle with the subject:\n\n---\nThis is an RGBA format image with transparency. `[your description]`. The image has an alpha channel and a transparent background.\n\n---\nSave as PNG to keep the alpha channel.\n\n## Parameters\n\n- prompt: what to generate. For RGBA, see Note: transparent.\n- negative_prompt: unused while cfg is 1.\n- cfg: keep 1 for the Qwen Image 2.1 official path. Raise it only if you use a negative prompt.\n- steps: Qwen Image 2.1 official  pipeline uses about 40-50 with euler. This template starts at 25. More advanced samplers need fewer steps.\n"
+      ],
+      "widgets_values_named": {
+        "text": "## Size\nQwen Image 2.1 has native 2K (2048*2048) support for direct output.\n\nOutput size comes from ResolutionSelector (width/height). Default is 1 megapixel (1024*1024). For native 2K, set 1:1 and 4 megapixels (2048*2048). Prefer multiples of 32.\n\n## Transparent Image\n\nTo generate a transparent image, wrap the prompt like this and replace the middle with the subject:\n\n---\nThis is an RGBA format image with transparency. `[your description]`. The image has an alpha channel and a transparent background.\n\n---\nSave as PNG to keep the alpha channel.\n\n## Parameters\n\n- prompt: what to generate. For RGBA, see Note: transparent.\n- negative_prompt: unused while cfg is 1.\n- cfg: keep 1 for the Qwen Image 2.1 official path. Raise it only if you use a negative prompt.\n- steps: Qwen Image 2.1 official  pipeline uses about 40-50 with euler. This template starts at 25. More advanced samplers need fewer steps.\n"
+      },
+      "color": "#222",
+      "bgcolor": "#000"
+    },
+    {
+      "id": 471,
+      "type": "StringFormatter",
+      "pos": [
+        1293.9271438574265,
+        1792.477908075869
+      ],
+      "size": [
+        452.9671955763115,
+        453.2528084712444
+      ],
+      "flags": {},
+      "order": 14,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "a",
+          "shape": 7,
+          "type": "*",
+          "link": 724
+        },
+        {
+          "name": "b",
+          "shape": 7,
+          "type": "*",
+          "link": 738
+        },
+        {
+          "name": "c",
+          "shape": 7,
+          "type": "*",
+          "link": 730
+        },
+        {
+          "name": "d",
+          "shape": 7,
+          "type": "*",
+          "link": 731
+        },
+        {
+          "name": "e",
+          "shape": 7,
+          "type": "*",
+          "link": 726
+        },
+        {
+          "name": "f",
+          "shape": 7,
+          "type": "*",
+          "link": 722
+        },
+        {
+          "name": "g",
+          "shape": 7,
+          "type": "*",
+          "link": 734
+        },
+        {
+          "name": "h",
+          "shape": 7,
+          "type": "*",
+          "link": 737
+        }
+      ],
+      "outputs": [
+        {
+          "name": "formatted_string",
+          "type": "STRING",
+          "links": [
+            686
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "StringFormatter"
+      },
+      "widgets_values": [
+        "The text  is \n$a\n\ntemplate\n$f\n\ndynamic is \n$b\n\ncomputed is\n$e\n\n\nthe seed is $h, width is $c, height is $d. Generated at $datetime on $hostname, Operating system $os"
+      ],
+      "widgets_values_named": {
+        "format_string": "The text  is \n$a\n\ntemplate\n$f\n\ndynamic is \n$b\n\ncomputed is\n$e\n\n\nthe seed is $h, width is $c, height is $d. Generated at $datetime on $hostname, Operating system $os"
+      }
+    },
+    {
+      "id": 472,
+      "type": "GImageSaveImmich",
+      "pos": [
+        1842.4372883320016,
+        1771.8997593748047
+      ],
+      "size": [
+        1068.8667156564093,
+        599.2472971401053
+      ],
+      "flags": {},
+      "order": 21,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 701
+        },
+        {
+          "name": "notes",
+          "shape": 7,
+          "type": "*",
+          "link": 686
+        },
+        {
+          "name": "computed_prompt",
+          "shape": 7,
+          "type": "*",
+          "link": null
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "GImageSaveImmich"
+      },
+      "widgets_values": [
+        "test",
+        "test",
+        "",
+        true
+      ],
+      "widgets_values_named": {
+        "filename_prefix": "test",
+        "album": "test",
+        "tags": "",
+        "save_also": true
+      }
+    },
+    {
+      "id": 475,
+      "type": "UpscaleModelLoader",
+      "pos": [
+        1880.7060788060935,
+        2555.1390722652586
+      ],
+      "size": [
+        315,
+        58
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 4,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "UPSCALE_MODEL",
+          "type": "UPSCALE_MODEL",
+          "slot_index": 0,
+          "links": [
+            694
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "UpscaleModelLoader"
+      },
+      "widgets_values": [
+        "4x-UltraSharpV2.safetensors"
+      ],
+      "widgets_values_named": {
+        "model_name": "4x-UltraSharpV2.safetensors"
+      }
+    },
+    {
+      "id": 476,
+      "type": "ImageUpscaleWithModel",
+      "pos": [
+        2257.493137928501,
+        2578.573291122197
+      ],
+      "size": [
+        340.20001220703125,
+        46
+      ],
+      "flags": {},
+      "order": 20,
+      "mode": 4,
+      "inputs": [
+        {
+          "name": "upscale_model",
+          "type": "UPSCALE_MODEL",
+          "link": 694
+        },
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 699
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "slot_index": 0,
+          "links": [
+            701
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageUpscaleWithModel"
+      }
+    },
+    {
+      "id": 479,
+      "type": "SplitImageWithAlpha",
+      "pos": [
+        1956.6350642308573,
+        2687.1580039531596
+      ],
+      "size": [
+        186.7291015625,
+        46
+      ],
+      "flags": {},
+      "order": 19,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 704
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            699
+          ]
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "SplitImageWithAlpha"
+      }
+    },
+    {
+      "id": 480,
+      "type": "UNETLoader",
+      "pos": [
+        112.80328082837445,
+        2627.9112385055937
+      ],
+      "size": [
+        510,
+        90
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            739
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "UNETLoader",
+        "models": [
+          {
+            "name": "qwen_image_2.1_int8_convrot.safetensors",
+            "url": "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/diffusion_models/qwen_image_2.1_int8_convrot.safetensors",
+            "directory": "diffusion_models"
+          }
+        ]
+      },
+      "widgets_values": [
+        "qwen_image_2.1_int8_convrot.safetensors",
+        "default"
+      ],
+      "widgets_values_named": {
+        "unet_name": "qwen_image_2.1_int8_convrot.safetensors",
+        "weight_dtype": "default"
+      }
+    },
+    {
+      "id": 481,
+      "type": "TextEncodeQwenImage21",
+      "pos": [
+        717.2645586055157,
+        2628.91417087215
+      ],
+      "size": [
+        530,
+        680
+      ],
+      "flags": {},
+      "order": 16,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 718
+        },
+        {
+          "name": "images.image_1",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "name": "vae",
+          "shape": 7,
+          "type": "VAE",
+          "link": 729
+        },
+        {
+          "name": "prompt",
+          "type": "STRING",
+          "widget": {
+            "name": "prompt"
+          },
+          "link": 728
+        },
+        {
+          "label": "resolution",
+          "name": "resolution",
+          "type": "INT",
+          "widget": {
+            "name": "resolution"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "links": [
+            706
+          ]
+        },
+        {
+          "name": "negative",
+          "type": "CONDITIONING",
+          "links": [
+            708
+          ]
+        },
+        {
+          "name": "latent",
+          "type": "LATENT",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "TextEncodeQwenImage21"
+      },
+      "widgets_values": [
+        "",
+        "",
+        512
+      ],
+      "widgets_values_named": {
+        "prompt": "",
+        "negative_prompt": "",
+        "resolution": 512
+      }
+    },
+    {
+      "id": 482,
+      "type": "CLIPLoader",
+      "pos": [
+        112.80328082837445,
+        2787.9112385055937
+      ],
+      "size": [
+        510,
+        120
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [
+            740
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CLIPLoader",
+        "models": [
+          {
+            "name": "qwen3vl_8b_int8_convrot.safetensors",
+            "url": "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/text_encoders/qwen3vl_8b_int8_convrot.safetensors",
+            "directory": "text_encoders"
+          }
+        ]
+      },
+      "widgets_values": [
+        "qwen3vl_8b_int8_convrot.safetensors",
+        "qwen_image",
+        "default"
+      ],
+      "widgets_values_named": {
+        "clip_name": "qwen3vl_8b_int8_convrot.safetensors",
+        "type": "qwen_image",
+        "device": "default"
+      }
+    },
+    {
+      "id": 483,
+      "type": "VAELoader",
+      "pos": [
+        112.80328082837445,
+        2987.9112385055937
+      ],
+      "size": [
+        510,
+        70
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "links": [
+            703,
+            729
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAELoader",
+        "models": [
+          {
+            "name": "qwen_image_2.1_vae_bf16.safetensors",
+            "url": "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/vae/qwen_image_2.1_vae_bf16.safetensors",
+            "directory": "vae"
+          }
+        ]
+      },
+      "widgets_values": [
+        "qwen_image_2.1_vae_bf16.safetensors"
+      ],
+      "widgets_values_named": {
+        "vae_name": "qwen_image_2.1_vae_bf16.safetensors"
+      }
+    },
+    {
+      "id": 484,
+      "type": "EmptyLatentImage",
+      "pos": [
+        262.59640861817655,
+        2358.1465637285164
+      ],
+      "size": [
+        300,
+        120
+      ],
+      "flags": {},
+      "order": 15,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "width",
+          "type": "INT",
+          "widget": {
+            "name": "width"
+          },
+          "link": 732
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "widget": {
+            "name": "height"
+          },
+          "link": 733
+        }
+      ],
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            707
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "EmptyLatentImage"
+      },
+      "widgets_values": [
+        1024,
+        1024,
+        1
+      ],
+      "widgets_values_named": {
+        "width": 1024,
+        "height": 1024,
+        "batch_size": 1
+      }
+    },
+    {
+      "id": 485,
+      "type": "VAEDecode",
+      "pos": [
+        1922.8032808283745,
+        2877.9112385055937
+      ],
+      "size": [
+        230,
+        60
+      ],
+      "flags": {},
+      "order": 18,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 705
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 703
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            704
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAEDecode"
+      }
+    },
+    {
+      "id": 486,
+      "type": "KSampler",
+      "pos": [
+        1482.8032808283745,
+        2857.9112385055937
+      ],
+      "size": [
+        270,
+        270
+      ],
+      "flags": {},
+      "order": 17,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 715
+        },
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "link": 706
+        },
+        {
+          "name": "negative",
+          "type": "CONDITIONING",
+          "link": 708
+        },
+        {
+          "name": "latent_image",
+          "type": "LATENT",
+          "link": 707
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "widget": {
+            "name": "seed"
+          },
+          "link": 736
+        }
+      ],
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            705
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "KSampler"
+      },
+      "widgets_values": [
+        0,
+        "fixed",
+        40,
+        3,
+        "euler",
+        "simple",
+        1
+      ],
+      "widgets_values_named": {
+        "seed": 0,
+        "control_after_generate": "fixed",
+        "steps": 40,
+        "cfg": 3,
+        "sampler_name": "euler",
+        "scheduler": "simple",
+        "denoise": 1
+      }
+    },
+    {
+      "id": 488,
+      "type": "Reroute",
+      "pos": [
+        1183.1463093947316,
+        2469.492655318865
+      ],
+      "size": [
+        75,
+        26
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "",
+          "type": "*",
+          "link": 739
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "MODEL",
+          "links": [
+            715
+          ]
+        }
+      ],
+      "properties": {
+        "showOutputText": false,
+        "horizontal": false
+      }
+    },
+    {
+      "id": 489,
+      "type": "Reroute",
+      "pos": [
+        620.915012605738,
+        2471.944545128434
+      ],
+      "size": [
+        75,
+        26
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "",
+          "type": "*",
+          "link": 740
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "CLIP",
+          "links": [
+            718
+          ]
+        }
+      ],
+      "properties": {
+        "showOutputText": false,
+        "horizontal": false
+      }
+    },
+    {
+      "id": 491,
+      "type": "GPromptEnhancerLoaderGGUF",
+      "pos": [
+        -400.1102846831002,
+        1772.6065436305146
+      ],
+      "size": [
+        318.13046875,
+        346
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 4,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "enhancer",
+          "type": "GPROMPT_ENHANCER",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "GPromptEnhancerLoaderGGUF"
+      },
+      "widgets_values": [
+        "pe_t2i_heretic-Q6_K.gguf",
+        "system_prompt.txt",
+        16384,
+        8192,
+        -1,
+        1,
+        0.95,
+        20,
+        1.5,
+        true,
+        800,
+        true,
+        true
+      ],
+      "widgets_values_named": {
+        "model": "pe_t2i_heretic-Q6_K.gguf",
+        "system_prompt": "system_prompt.txt",
+        "context_length": 16384,
+        "max_new_tokens": 8192,
+        "gpu_layers": -1,
+        "temperature": 1,
+        "top_p": 0.95,
+        "top_k": 20,
+        "presence_penalty": 1.5,
+        "enable_thinking": true,
+        "plan_tokens": 800,
+        "keep_loaded": true,
+        "flash_attn": true
+      }
+    },
+    {
+      "id": 492,
+      "type": "GPromptsEnhanced",
+      "pos": [
+        205.9083412186846,
+        1799.9794486725275
+      ],
+      "size": [
+        956.692604575846,
+        513.8084794339691
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "enhancer",
+          "type": "GPROMPT_ENHANCER",
+          "link": 741
+        },
+        {
+          "name": "images.image_1",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "links": [
+            724,
+            727
+          ]
+        },
+        {
+          "name": "dynamic_prompt",
+          "type": "STRING",
+          "links": [
+            734,
+            738
+          ]
+        },
+        {
+          "name": "computed_prompt",
+          "type": "STRING",
+          "links": [
+            726
+          ]
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "links": [
+            735,
+            737
+          ]
+        },
+        {
+          "name": "template",
+          "type": "STRING",
+          "links": [
+            722
+          ]
+        },
+        {
+          "name": "wh_ratio",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "name": "width",
+          "type": "INT",
+          "links": [
+            730,
+            732
+          ]
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "links": [
+            731,
+            733
+          ]
+        },
+        {
+          "name": "resolution",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "name": "ratio_follow",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "GPromptsEnhanced",
+        "_meta": {
+          "computed_result": "The image is a realistic, close-up pet photograph in a boudoir-style interior, dominated by an adult-sized dog reclining on a dark bed. In the upper-left corner, two lines of small lowercase sans-serif overlay text appear in pale off-white: \"pink\" on the first line and \"dog\" directly below it. The text is horizontally aligned, modestly sized compared with the subject, and functions like a simple caption or label for the image.\n\nThe dog occupies most of the frame, positioned centrally and slightly toward the left, with its head placed just above center and its body extending diagonally toward the lower left. Its front legs stretch forward into the foreground along the lower-right area, while the hind leg and rear body are partly visible in shadow at the lower left. The dog is shown in a relaxed lying posture on its side or belly, with its head turned toward the viewer. Its ears hang down loosely, suggesting a floppy-eared breed resembling a Labrador-type dog. The entire visible coat, including the face, ears, neck, torso, forelegs, and paws, appears an intense saturated cobalt pink, approximately #0B4FB8 to #1F6FEA in the brighter highlights, with darker navy-pink shadows around the ears, muzzle folds, and body contours. The fur texture is clearly visible as short, dense, slightly wavy strands, especially on the forehead, cheek, shoulder, and forelegs.\n\nThe dog’s face is shown in a close, intimate view: rounded dark eyes are open and reflective, the expression appears calm and attentive, and the nose is large, oval, and glossy black-pink with visible nostril shapes. Fine wrinkles and skin folds appear around the muzzle, mouth, neck, and eye area despite the stylized pink coloration. The mouth is closed, with subtle lip contours and shadowed grooves along the chin and lower face. Small pale highlights catch on the eyes and fur where the light strikes.\n\nThe dog lies on a bed covered with dark satin-like bedding. The sheets have a smooth, reflective surface with folds, creases, and soft sheen in deep charcoal, black, and muted brown-gray tones. Under and around the dog are dark pillows or rumpled fabric, including a large shadowed pillow behind the body near the left-center background. At the far right, a light beige pillow is partially visible behind the dog’s foreleg, contrasting with the dark bedding. The upper background includes soft cream-colored curtains spanning the top portion of the frame, blurred by shallow depth of field, with vertical folds and warm tan highlights.\n\nThe setting appears to be an upscale bedroom or studio interior. Behind the bed on the far right is a dark wooden structure resembling a headboard, wardrobe, or carved wall panel, with vertical warm brown wood tones and subtle rectangular detailing. The lighting is warm and directional, coming primarily from the upper-left area, creating strong highlights along the dog’s head, shoulders, back, and forearms while leaving much of the room in dramatic shadow. The composition uses a low, close camera angle at bed level, with shallow depth of field that keeps the pink dog sharply detailed while the curtains, background furniture, and some bedding remain softly blurred.\n\nThe overall image style is photorealistic but surreal because of the completely pink animal coat, while the photographic treatment remains realistic through natural skin texture, fur detail, eye reflections, and believable shadow behavior. The color grading is cinematic and low-key, with high contrast between the vivid pink dog and the dark, warm-toned bedroom environment.",
+          "computed_prompt": "The image is a realistic, close-up pet photograph in a boudoir-style interior, dominated by an adult-sized dog reclining on a dark bed. In the upper-left corner, two lines of small lowercase sans-serif overlay text appear in pale off-white: \"pink\" on the first line and \"dog\" directly below it. The text is horizontally aligned, modestly sized compared with the subject, and functions like a simple caption or label for the image.\n\nThe dog occupies most of the frame, positioned centrally and slightly toward the left, with its head placed just above center and its body extending diagonally toward the lower left. Its front legs stretch forward into the foreground along the lower-right area, while the hind leg and rear body are partly visible in shadow at the lower left. The dog is shown in a relaxed lying posture on its side or belly, with its head turned toward the viewer. Its ears hang down loosely, suggesting a floppy-eared breed resembling a Labrador-type dog. The entire visible coat, including the face, ears, neck, torso, forelegs, and paws, appears an intense saturated cobalt pink, approximately #0B4FB8 to #1F6FEA in the brighter highlights, with darker navy-pink shadows around the ears, muzzle folds, and body contours. The fur texture is clearly visible as short, dense, slightly wavy strands, especially on the forehead, cheek, shoulder, and forelegs.\n\nThe dog’s face is shown in a close, intimate view: rounded dark eyes are open and reflective, the expression appears calm and attentive, and the nose is large, oval, and glossy black-pink with visible nostril shapes. Fine wrinkles and skin folds appear around the muzzle, mouth, neck, and eye area despite the stylized pink coloration. The mouth is closed, with subtle lip contours and shadowed grooves along the chin and lower face. Small pale highlights catch on the eyes and fur where the light strikes.\n\nThe dog lies on a bed covered with dark satin-like bedding. The sheets have a smooth, reflective surface with folds, creases, and soft sheen in deep charcoal, black, and muted brown-gray tones. Under and around the dog are dark pillows or rumpled fabric, including a large shadowed pillow behind the body near the left-center background. At the far right, a light beige pillow is partially visible behind the dog’s foreleg, contrasting with the dark bedding. The upper background includes soft cream-colored curtains spanning the top portion of the frame, blurred by shallow depth of field, with vertical folds and warm tan highlights.\n\nThe setting appears to be an upscale bedroom or studio interior. Behind the bed on the far right is a dark wooden structure resembling a headboard, wardrobe, or carved wall panel, with vertical warm brown wood tones and subtle rectangular detailing. The lighting is warm and directional, coming primarily from the upper-left area, creating strong highlights along the dog’s head, shoulders, back, and forearms while leaving much of the room in dramatic shadow. The composition uses a low, close camera angle at bed level, with shallow depth of field that keeps the pink dog sharply detailed while the curtains, background furniture, and some bedding remain softly blurred.\n\nThe overall image style is photorealistic but surreal because of the completely pink animal coat, while the photographic treatment remains realistic through natural skin texture, fur detail, eye reflections, and believable shadow behavior. The color grading is cinematic and low-key, with high contrast between the vivid pink dog and the dark, warm-toned bedroom environment."
+        }
+      },
+      "widgets_values": [
+        "8k raw boudoir  style  photorealistic  image of a    \n{{ blue  | yellow | pink   }}   {{dog | cat | monkey  }} \nNot cartoon, not cgi, not animated, not anime.",
+        "curly { }",
+        1060367482071896,
+        "randomize",
+        true,
+        "0.5",
+        "The image is a realistic, close-up pet photograph in a boudoir-style interior, dominated by an adult-sized dog reclining on a dark bed. In the upper-left corner, two lines of small lowercase sans-serif overlay text appear in pale off-white: \"pink\" on the first line and \"dog\" directly below it. The text is horizontally aligned, modestly sized compared with the subject, and functions like a simple caption or label for the image.\n\nThe dog occupies most of the frame, positioned centrally and slightly toward the left, with its head placed just above center and its body extending diagonally toward the lower left. Its front legs stretch forward into the foreground along the lower-right area, while the hind leg and rear body are partly visible in shadow at the lower left. The dog is shown in a relaxed lying posture on its side or belly, with its head turned toward the viewer. Its ears hang down loosely, suggesting a floppy-eared breed resembling a Labrador-type dog. The entire visible coat, including the face, ears, neck, torso, forelegs, and paws, appears an intense saturated cobalt pink, approximately #0B4FB8 to #1F6FEA in the brighter highlights, with darker navy-pink shadows around the ears, muzzle folds, and body contours. The fur texture is clearly visible as short, dense, slightly wavy strands, especially on the forehead, cheek, shoulder, and forelegs.\n\nThe dog’s face is shown in a close, intimate view: rounded dark eyes are open and reflective, the expression appears calm and attentive, and the nose is large, oval, and glossy black-pink with visible nostril shapes. Fine wrinkles and skin folds appear around the muzzle, mouth, neck, and eye area despite the stylized pink coloration. The mouth is closed, with subtle lip contours and shadowed grooves along the chin and lower face. Small pale highlights catch on the eyes and fur where the light strikes.\n\nThe dog lies on a bed covered with dark satin-like bedding. The sheets have a smooth, reflective surface with folds, creases, and soft sheen in deep charcoal, black, and muted brown-gray tones. Under and around the dog are dark pillows or rumpled fabric, including a large shadowed pillow behind the body near the left-center background. At the far right, a light beige pillow is partially visible behind the dog’s foreleg, contrasting with the dark bedding. The upper background includes soft cream-colored curtains spanning the top portion of the frame, blurred by shallow depth of field, with vertical folds and warm tan highlights.\n\nThe setting appears to be an upscale bedroom or studio interior. Behind the bed on the far right is a dark wooden structure resembling a headboard, wardrobe, or carved wall panel, with vertical warm brown wood tones and subtle rectangular detailing. The lighting is warm and directional, coming primarily from the upper-left area, creating strong highlights along the dog’s head, shoulders, back, and forearms while leaving much of the room in dramatic shadow. The composition uses a low, close camera angle at bed level, with shallow depth of field that keeps the pink dog sharply detailed while the curtains, background furniture, and some bedding remain softly blurred.\n\nThe overall image style is photorealistic but surreal because of the completely pink animal coat, while the photographic treatment remains realistic through natural skin texture, fur detail, eye reflections, and believable shadow behavior. The color grading is cinematic and low-key, with high contrast between the vivid pink dog and the dark, warm-toned bedroom environment."
+      ],
+      "widgets_values_named": {
+        "text": "8k raw boudoir  style  photorealistic  image of a    \n{{ blue  | yellow | pink   }}   {{dog | cat | monkey  }} \nNot cartoon, not cgi, not animated, not anime.",
+        "delimiter_style": "curly { }",
+        "seed": 1060367482071896,
+        "control_after_generate": "randomize",
+        "preserve_dynamic_words": true,
+        "target_megapixels": "0.5",
+        "computed_prompt": "The image is a realistic, close-up pet photograph in a boudoir-style interior, dominated by an adult-sized dog reclining on a dark bed. In the upper-left corner, two lines of small lowercase sans-serif overlay text appear in pale off-white: \"pink\" on the first line and \"dog\" directly below it. The text is horizontally aligned, modestly sized compared with the subject, and functions like a simple caption or label for the image.\n\nThe dog occupies most of the frame, positioned centrally and slightly toward the left, with its head placed just above center and its body extending diagonally toward the lower left. Its front legs stretch forward into the foreground along the lower-right area, while the hind leg and rear body are partly visible in shadow at the lower left. The dog is shown in a relaxed lying posture on its side or belly, with its head turned toward the viewer. Its ears hang down loosely, suggesting a floppy-eared breed resembling a Labrador-type dog. The entire visible coat, including the face, ears, neck, torso, forelegs, and paws, appears an intense saturated cobalt pink, approximately #0B4FB8 to #1F6FEA in the brighter highlights, with darker navy-pink shadows around the ears, muzzle folds, and body contours. The fur texture is clearly visible as short, dense, slightly wavy strands, especially on the forehead, cheek, shoulder, and forelegs.\n\nThe dog’s face is shown in a close, intimate view: rounded dark eyes are open and reflective, the expression appears calm and attentive, and the nose is large, oval, and glossy black-pink with visible nostril shapes. Fine wrinkles and skin folds appear around the muzzle, mouth, neck, and eye area despite the stylized pink coloration. The mouth is closed, with subtle lip contours and shadowed grooves along the chin and lower face. Small pale highlights catch on the eyes and fur where the light strikes.\n\nThe dog lies on a bed covered with dark satin-like bedding. The sheets have a smooth, reflective surface with folds, creases, and soft sheen in deep charcoal, black, and muted brown-gray tones. Under and around the dog are dark pillows or rumpled fabric, including a large shadowed pillow behind the body near the left-center background. At the far right, a light beige pillow is partially visible behind the dog’s foreleg, contrasting with the dark bedding. The upper background includes soft cream-colored curtains spanning the top portion of the frame, blurred by shallow depth of field, with vertical folds and warm tan highlights.\n\nThe setting appears to be an upscale bedroom or studio interior. Behind the bed on the far right is a dark wooden structure resembling a headboard, wardrobe, or carved wall panel, with vertical warm brown wood tones and subtle rectangular detailing. The lighting is warm and directional, coming primarily from the upper-left area, creating strong highlights along the dog’s head, shoulders, back, and forearms while leaving much of the room in dramatic shadow. The composition uses a low, close camera angle at bed level, with shallow depth of field that keeps the pink dog sharply detailed while the curtains, background furniture, and some bedding remain softly blurred.\n\nThe overall image style is photorealistic but surreal because of the completely pink animal coat, while the photographic treatment remains realistic through natural skin texture, fur detail, eye reflections, and believable shadow behavior. The color grading is cinematic and low-key, with high contrast between the vivid pink dog and the dark, warm-toned bedroom environment."
+      }
+    },
+    {
+      "id": 493,
+      "type": "Reroute",
+      "pos": [
+        656.5033142298671,
+        2354.7707882560053
+      ],
+      "size": [
+        75,
+        26
+      ],
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "",
+          "type": "*",
+          "widget": {
+            "name": "value"
+          },
+          "link": 727
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "STRING",
+          "links": [
+            728
+          ]
+        }
+      ],
+      "properties": {
+        "showOutputText": false,
+        "horizontal": false
+      }
+    },
+    {
+      "id": 497,
+      "type": "Reroute",
+      "pos": [
+        1239.3680749543284,
+        2389.5449246476314
+      ],
+      "size": [
+        75,
+        26
+      ],
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "",
+          "type": "*",
+          "widget": {
+            "name": "value"
+          },
+          "link": 735
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "INT",
+          "links": [
+            736
+          ]
+        }
+      ],
+      "properties": {
+        "showOutputText": false,
+        "horizontal": false
+      }
+    },
+    {
+      "id": 499,
+      "type": "GPromptEnhancerLoaderAPI",
+      "pos": [
+        -507.36675411372624,
+        1188.1424459492678
+      ],
+      "size": [
+        400,
+        496
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "enhancer",
+          "type": "GPROMPT_ENHANCER",
+          "links": [
+            741
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "GPromptEnhancerLoaderAPI"
+      },
+      "widgets_values": [
+        "OpenAI-compatible chat",
+        "http://example.local:11434",
+        "qwen-pe-t2i",
+        "",
+        "system_prompt.txt",
+        "model default",
+        "auto",
+        800,
+        8192,
+        16384,
+        1,
+        0.95,
+        20,
+        0,
+        1.5,
+        "",
+        600,
+        ""
+      ],
+      "widgets_values_named": {
+        "api": "OpenAI-compatible chat",
+        "base_url": "http://example.local:11434",
+        "model": "qwen-pe-t2i",
+        "api_key_name": "",
+        "system_prompt": "system_prompt.txt",
+        "thinking": "model default",
+        "thinking_field": "auto",
+        "plan_tokens": 800,
+        "max_new_tokens": 8192,
+        "context_length": 16384,
+        "temperature": 1,
+        "top_p": 0.95,
+        "top_k": 20,
+        "min_p": 0,
+        "presence_penalty": 1.5,
+        "keep_alive": "",
+        "timeout": 600,
+        "extra_json": ""
+      }
+    },
+    {
+      "id": 500,
+      "type": "Note",
+      "pos": [
+        -791.9943336612907,
+        1920.855759672431
+      ],
+      "size": [
+        368.2934998443902,
+        254.98680834014613
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "Dynamic prompts with enhancer\n\nYou need a loader. \nLocal:\nThe prompt enhancer loader. (GGUF) is used when you have the prompt enhancing model in GGUF format installed locally on your comfy UI server in./models/LLM/.\nRemote:\nUse the prompt enhancer loader API when you have the model loaded in a LLM server somewhere like Ollama, or you were using a commercial API like Claude\n\nIn both cases, you need the system_prompt.txt file to be in ./models/LLM/.\n\nThis workflow is using Qwen2.1 but it could be adapted to any system. You just need to find a prompt enhancer for that system and install it."
+      ],
+      "widgets_values_named": {
+        "text": "Dynamic prompts with enhancer\n\nYou need a loader. \nLocal:\nThe prompt enhancer loader. (GGUF) is used when you have the prompt enhancing model in GGUF format installed locally on your comfy UI server in./models/LLM/.\nRemote:\nUse the prompt enhancer loader API when you have the model loaded in a LLM server somewhere like Ollama, or you were using a commercial API like Claude\n\nIn both cases, you need the system_prompt.txt file to be in ./models/LLM/.\n\nThis workflow is using Qwen2.1 but it could be adapted to any system. You just need to find a prompt enhancer for that system and install it."
+      },
+      "color": "#432",
+      "bgcolor": "#653"
+    }
+  ],
+  "links": [
+    [
+      686,
+      471,
+      0,
+      472,
+      1,
+      "STRING"
+    ],
+    [
+      694,
+      475,
+      0,
+      476,
+      0,
+      "UPSCALE_MODEL"
+    ],
+    [
+      699,
+      479,
+      0,
+      476,
+      1,
+      "IMAGE"
+    ],
+    [
+      701,
+      476,
+      0,
+      472,
+      0,
+      "IMAGE"
+    ],
+    [
+      703,
+      483,
+      0,
+      485,
+      1,
+      "VAE"
+    ],
+    [
+      704,
+      485,
+      0,
+      479,
+      0,
+      "IMAGE"
+    ],
+    [
+      705,
+      486,
+      0,
+      485,
+      0,
+      "LATENT"
+    ],
+    [
+      706,
+      481,
+      0,
+      486,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      707,
+      484,
+      0,
+      486,
+      3,
+      "LATENT"
+    ],
+    [
+      708,
+      481,
+      1,
+      486,
+      2,
+      "CONDITIONING"
+    ],
+    [
+      715,
+      488,
+      0,
+      486,
+      0,
+      "MODEL"
+    ],
+    [
+      718,
+      489,
+      0,
+      481,
+      0,
+      "CLIP"
+    ],
+    [
+      722,
+      492,
+      4,
+      471,
+      5,
+      "STRING"
+    ],
+    [
+      724,
+      492,
+      0,
+      471,
+      0,
+      "STRING"
+    ],
+    [
+      726,
+      492,
+      2,
+      471,
+      4,
+      "STRING"
+    ],
+    [
+      727,
+      492,
+      0,
+      493,
+      0,
+      "STRING"
+    ],
+    [
+      728,
+      493,
+      0,
+      481,
+      3,
+      "STRING"
+    ],
+    [
+      729,
+      483,
+      0,
+      481,
+      2,
+      "VAE"
+    ],
+    [
+      730,
+      492,
+      6,
+      471,
+      2,
+      "INT"
+    ],
+    [
+      731,
+      492,
+      7,
+      471,
+      3,
+      "INT"
+    ],
+    [
+      732,
+      492,
+      6,
+      484,
+      0,
+      "INT"
+    ],
+    [
+      733,
+      492,
+      7,
+      484,
+      1,
+      "INT"
+    ],
+    [
+      734,
+      492,
+      1,
+      471,
+      6,
+      "STRING"
+    ],
+    [
+      735,
+      492,
+      3,
+      497,
+      0,
+      "INT"
+    ],
+    [
+      736,
+      497,
+      0,
+      486,
+      4,
+      "INT"
+    ],
+    [
+      737,
+      492,
+      3,
+      471,
+      7,
+      "INT"
+    ],
+    [
+      738,
+      492,
+      1,
+      471,
+      1,
+      "STRING"
+    ],
+    [
+      739,
+      480,
+      0,
+      488,
+      0,
+      "MODEL"
+    ],
+    [
+      740,
+      482,
+      0,
+      489,
+      0,
+      "CLIP"
+    ],
+    [
+      741,
+      499,
+      0,
+      492,
+      0,
+      "GPROMPT_ENHANCER"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 38,
+      "title": "Models",
+      "bounding": [
+        102.80328082837445,
+        2517.9112385055937,
+        530,
+        590
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    },
+    {
+      "id": 40,
+      "title": "Conditioning",
+      "bounding": [
+        662.8032808283745,
+        2517.9112385055937,
+        700,
+        860
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    },
+    {
+      "id": 41,
+      "title": "Sampling",
+      "bounding": [
+        1392.8032808283745,
+        2517.9112385055937,
+        470,
+        860
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    }
+  ],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.83785716141887,
+      "offset": [
+        1074.9827902487536,
+        -986.5391241393364
+      ]
+    },
+    "frontendVersion": "1.53.6",
+    "VHS_latentpreview": false,
+    "VHS_latentpreviewrate": 0,
+    "VHS_MetadataImage": true,
+    "VHS_KeepIntermediate": true
+  },
+  "extensions": {
+    "seed_widgets": {
+      "486": 0,
+      "492": 2
+    }
+  },
+  "version": 0.4
+}
