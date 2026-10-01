@@ -33,9 +33,11 @@ API keys never go on the node (widget values are saved into workflows and
 image metadata). They live in Settings > Gadzoinks > LLM; the node only names
 which one to use. No extra Python packages: plain urllib.
 """
+import functools
 import json
 import os
 import re
+import socket
 import time
 import urllib.error
 import urllib.parse
@@ -45,13 +47,19 @@ import comfy.model_management as model_management
 import comfy.utils
 from comfy_api.latest import io
 
-from .common import dprint
+from .common import get_logger
 from .comfyui_gprompts import get_setting
 from .enhanced_prompt import (
     PromptEnhancerType, PromptEnhancerBase, PE_CONTRACT_KEY, STOP_STRINGS,
     answer_complete, run_raw_generation, finalize_result,
     list_llm_files, resolve_llm_file, SYSTEM_PROMPT_EXTENSIONS,
+    TASK_T2I, TASK_EDIT, LLM_IMAGE_MEGAPIXELS, DEFAULT_LLM_IMAGE_MP,
+    image_for_llm, pil_to_jpeg_b64, prepared_image,
+    interrupted, check_interrupted, progress_bar, h3_temperature,
+    with_second_try, SECOND_TRY_TIP,
 )
+
+log = get_logger("enhancer.api")
 
 API_OPENAI_CHAT = "OpenAI-compatible chat"
 API_OPENAI_RAW = "OpenAI-compatible completions (raw prompt)"
@@ -60,6 +68,7 @@ API_OLLAMA_RAW = "Ollama generate (raw prompt)"
 API_ANTHROPIC = "Anthropic messages"
 API_STYLES = [API_OPENAI_CHAT, API_OPENAI_RAW, API_OLLAMA_CHAT, API_OLLAMA_RAW, API_ANTHROPIC]
 RAW_STYLES = {API_OPENAI_RAW, API_OLLAMA_RAW}
+CHAT_STYLES = [API_OPENAI_CHAT, API_OLLAMA_CHAT, API_ANTHROPIC]   # the ones that can carry images
 OLLAMA_STYLES = {API_OLLAMA_CHAT, API_OLLAMA_RAW}
 
 DEFAULT_BASE_URLS = {
@@ -200,9 +209,9 @@ def post_adaptive(url, payload, headers, timeout, model, optional, renames=None)
                     wait = min(float(e.retry_after), 30.0)
                 except (TypeError, ValueError):
                     wait = 2.0 * transient
-                print(f"GPromptsEnhanced: HTTP {e.status} from {url}, retrying in {wait:.0f}s")
+                log.warning(f"GPromptsEnhanced: HTTP {e.status} from {url}, retrying in {wait:.0f}s")
                 time.sleep(wait)
-                model_management.throw_exception_if_processing_interrupted()
+                check_interrupted()
                 continue
             if e.status not in (400, 422):
                 raise
@@ -221,7 +230,7 @@ def post_adaptive(url, payload, headers, timeout, model, optional, renames=None)
                     body.pop(key)
                     learned["drop"].add(key)
                     changed = True
-                    print(f"GPromptsEnhanced: {url} rejected '{key}'; retrying without it")
+                    log.info(f"GPromptsEnhanced: {url} rejected '{key}'; retrying without it")
             if not changed:
                 raise
     raise RuntimeError(f"{url}: gave up adapting the request")
@@ -236,7 +245,7 @@ def iter_stream(resp, kind):
             yield json.loads(resp.read().decode("utf-8"))
             return
         for raw in resp:
-            if model_management.processing_interrupted():
+            if interrupted():
                 return
             line = raw.decode("utf-8", errors="replace").strip()
             if not line:
@@ -268,6 +277,42 @@ def _normalize_finish(reason):
     if reason in ("length", "max_tokens", "model_length_context_window_exceeded"):
         return "length"
     return reason
+
+
+_NO_PROMPT_CACHE = set()       # Anthropic-style base URLs that rejected cache_control
+
+
+def _log_cache_usage(usage):
+    """Anthropic reports how much of the prompt came from its cache."""
+    read = usage.get("cache_read_input_tokens") or 0
+    written = usage.get("cache_creation_input_tokens") or 0
+    if read or written:
+        log.info(f"GPromptsEnhanced: prompt cache - {read} tokens reused, {written} tokens stored, "
+              f"{usage.get('input_tokens') or 0} new")
+
+
+@functools.lru_cache(maxsize=64)
+def is_this_machine(url):
+    """True when url points at the ComfyUI machine itself (loopback, or this
+    host's own name or address)."""
+    host = (urllib.parse.urlsplit(url).hostname or "").lower().rstrip(".")
+    if host in ("localhost", "0.0.0.0", "::", "::1") or host.startswith("127."):
+        return True
+    names = set()
+    try:
+        name = socket.gethostname().lower()
+        names |= {name, name.split(".")[0], name.split(".")[0] + ".local"}
+        names.add(socket.getfqdn().lower())
+    except OSError:
+        pass
+    if host in names:
+        return True
+    try:
+        own = {info[4][0] for info in socket.getaddrinfo(socket.gethostname(), None)}
+        own.add(socket.gethostbyname(socket.gethostname()))
+    except OSError:
+        own = set()
+    return host in own
 
 
 def normalize_base_url(url, style):
@@ -330,7 +375,11 @@ def _deep_merge(base, extra):
 class APIPromptEnhancer(PromptEnhancerBase):
     def __init__(self, api, base_url, model, api_key_name, system_prompt_path, thinking,
                  thinking_field, plan_tokens, max_new_tokens, context_length, temperature,
-                 top_p, top_k, min_p, presence_penalty, keep_alive, timeout, extra_json):
+                 top_p, top_k, min_p, presence_penalty, keep_alive, timeout, extra_json,
+                 task=TASK_T2I, image_megapixels=None, second_try=False):
+        self.task = task
+        self.second_try = second_try
+        self.image_megapixels = image_megapixels or DEFAULT_LLM_IMAGE_MP
         self.api = api
         self.base_url = normalize_base_url(base_url, api)
         self.model = model.strip()
@@ -342,6 +391,7 @@ class APIPromptEnhancer(PromptEnhancerBase):
         self.max_new_tokens = max_new_tokens
         self.context_length = context_length
         self.temperature = temperature
+        self._run_temperature = temperature     # per call: see h3_temperature
         self.top_p = top_p
         self.top_k = top_k
         self.min_p = min_p
@@ -365,7 +415,7 @@ class APIPromptEnhancer(PromptEnhancerBase):
             self.api, self.base_url, self.model, self.api_key_name, self.system_prompt_path,
             sp_stamp, self.thinking, self.thinking_field, self.plan_tokens, self.max_new_tokens,
             self.context_length, self.temperature, self.top_p, self.top_k, self.min_p,
-            self.presence_penalty, self.extra,
+            self.presence_penalty, self.extra, self.task, self.image_megapixels, self.second_try,
         ], sort_keys=True)
 
     # -- request building --------------------------------------------------
@@ -388,7 +438,7 @@ class APIPromptEnhancer(PromptEnhancerBase):
     def _ollama_options(self, max_tokens, seed, stop=None):
         options = {
             "num_ctx": self.context_length, "num_predict": max_tokens,
-            "temperature": self.temperature, "top_p": self.top_p, "top_k": self.top_k,
+            "temperature": self._run_temperature, "top_p": self.top_p, "top_k": self.top_k,
             "min_p": self.min_p, "presence_penalty": self.presence_penalty,
             "repeat_penalty": 1.0, "seed": seed,
         }
@@ -413,7 +463,7 @@ class APIPromptEnhancer(PromptEnhancerBase):
         else:
             url = self.base_url + "/completions"
             payload = {"model": self.model, "prompt": prompt, "stream": True,
-                       "max_tokens": max_tokens, "temperature": self.temperature,
+                       "max_tokens": max_tokens, "temperature": self._run_temperature,
                        "top_p": self.top_p, "top_k": self.top_k, "min_p": self.min_p,
                        "presence_penalty": self.presence_penalty, "seed": seed,
                        "stop": STOP_STRINGS}
@@ -445,7 +495,7 @@ class APIPromptEnhancer(PromptEnhancerBase):
                 finish = "early"
                 break
         events.close()      # disconnect now, so the server stops generating
-        model_management.throw_exception_if_processing_interrupted()
+        check_interrupted()
         self._log_speed(n, started, finish)
         return self._combine("".join(thinking_buf), "".join(text_buf)), n, _normalize_finish(finish)
 
@@ -458,18 +508,39 @@ class APIPromptEnhancer(PromptEnhancerBase):
         return thinking + text
 
     # -- chat APIs ---------------------------------------------------------
-    def _chat(self, system_prompt, user_text, seed, api_key, pbar, stop_when):
+    def _user_message(self, user_text, images_b64):
+        """The user turn with images first, in order, then the instruction -
+        in the image format of this API."""
+        if not images_b64:
+            return {"role": "user", "content": user_text}
+        if self.api == API_OLLAMA_CHAT:
+            return {"role": "user", "content": user_text, "images": list(images_b64)}
+        if self.api == API_ANTHROPIC:
+            parts = [{"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
+                                                  "data": b}} for b in images_b64]
+            if self._anthropic_cache():
+                # Everything up to the last image is identical on every run: cache it.
+                parts[-1]["cache_control"] = {"type": "ephemeral"}
+        else:
+            parts = [{"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + b}}
+                     for b in images_b64]
+        return {"role": "user", "content": parts + [{"type": "text", "text": user_text}]}
+
+    def _chat(self, system_prompt, user_text, seed, api_key, pbar, stop_when, images_b64=None):
         seed = seed & 0x7FFFFFFF
         on = {"on": True, "off": False}.get(self.thinking)
-        messages = [{"role": "user", "content": user_text}]
+        messages = [self._user_message(user_text, images_b64)]
         renames = {}
         if self.api == API_ANTHROPIC:
             url = self.base_url + "/v1/messages"
             payload = {"model": self.model, "max_tokens": self.max_new_tokens, "messages": messages,
-                       "stream": True, "temperature": self.temperature, "top_p": self.top_p,
+                       "stream": True, "temperature": self._run_temperature, "top_p": self.top_p,
                        "top_k": self.top_k}
             if system_prompt:
                 payload["system"] = system_prompt
+                if self._anthropic_cache():
+                    payload["system"] = [{"type": "text", "text": system_prompt,
+                                          "cache_control": {"type": "ephemeral"}}]
             if on:
                 budget = self.plan_tokens if self.plan_tokens >= 1024 else 1024
                 budget = min(budget, max(1024, self.max_new_tokens - 1024))
@@ -490,7 +561,7 @@ class APIPromptEnhancer(PromptEnhancerBase):
             else:
                 url = self.base_url + "/chat/completions"
                 payload = {"model": self.model, "messages": messages, "stream": True,
-                           "max_tokens": self.max_new_tokens, "temperature": self.temperature,
+                           "max_tokens": self.max_new_tokens, "temperature": self._run_temperature,
                            "top_p": self.top_p, "top_k": self.top_k, "min_p": self.min_p,
                            "presence_penalty": self.presence_penalty, "seed": seed}
                 field = self.thinking_field
@@ -504,8 +575,19 @@ class APIPromptEnhancer(PromptEnhancerBase):
                 renames = {"max_tokens": "max_completion_tokens"}
                 kind = "sse"
         payload = self._finish_payload(payload)
-        resp = post_adaptive(url, payload, self._headers(api_key), self.timeout, self.model,
-                             optional | set(self.extra), renames)
+        try:
+            resp = post_adaptive(url, payload, self._headers(api_key), self.timeout, self.model,
+                                 optional | set(self.extra), renames)
+        except HTTPStatusError as e:
+            # An Anthropic-style server that doesn't know prompt caching: once without it.
+            if not (self.api == API_ANTHROPIC and e.status in (400, 422)
+                    and "cache_control" in (e.body or "") and self._anthropic_cache()):
+                raise
+            _NO_PROMPT_CACHE.add(self.base_url)
+            log.info(f"GPromptsEnhanced: {self.base_url} does not accept prompt caching; "
+                  f"sending without it.")
+            return self._chat(system_prompt, user_text, seed, api_key, pbar, stop_when,
+                              images_b64)
 
         content, reasoning, n, finish = [], [], 0, None
         started = time.perf_counter()
@@ -514,7 +596,9 @@ class APIPromptEnhancer(PromptEnhancerBase):
             piece, think_piece = "", ""
             if self.api == API_ANTHROPIC:
                 etype = ev.get("type")
-                if etype == "content_block_delta":
+                if etype == "message_start":
+                    _log_cache_usage((ev.get("message") or {}).get("usage") or {})
+                elif etype == "content_block_delta":
                     delta = ev.get("delta") or {}
                     piece = delta.get("text") or ""
                     think_piece = delta.get("thinking") or ""
@@ -550,21 +634,43 @@ class APIPromptEnhancer(PromptEnhancerBase):
                 finish = "early"
                 break
         events.close()      # disconnect now, so the server stops generating
-        model_management.throw_exception_if_processing_interrupted()
+        check_interrupted()
         self._log_speed(n, started, finish)
         return "".join(content), "".join(reasoning), _normalize_finish(finish)
 
     @staticmethod
     def _log_speed(n, started, finish):
         elapsed = time.perf_counter() - started
-        dprint(f"GPromptsEnhanced: {n} chunks in {elapsed:.1f}s, finish={finish}")
+        log.info(f"GPromptsEnhanced: {n} chunks in {elapsed:.1f}s, finish={finish}")
+
+    def uses_local_gpu(self, has_images):
+        """A server on this machine shares its GPU with the image model."""
+        return is_this_machine(self.base_url)
+
+    def _anthropic_cache(self):
+        return self.api == API_ANTHROPIC and self.base_url not in _NO_PROMPT_CACHE
 
     # -- entry point ---------------------------------------------------------
-    def enhance(self, user_text, seed):
+    def enhance(self, user_text, seed, images=None):
+        if not self.second_try:
+            return self._enhance(user_text, seed, images)
+        return with_second_try(lambda text: self._enhance(text, seed, images, warn=False),
+                               user_text, self._system_prompt(), len(images or []))
+
+    def _enhance(self, user_text, seed, images=None, warn=True):
+        images = list(images or [])
+        if images and self.api in RAW_STYLES:
+            raise RuntimeError(f"'{self.api}' can't send images; use a chat style "
+                               f"({', '.join(CHAT_STYLES)}) for image editing.")
         system_prompt = self._system_prompt()
+        self._run_temperature = h3_temperature(
+            self.temperature, system_prompt,
+            fixed=(self.api == API_ANTHROPIC and self.thinking == "on"))
         api_key = resolve_api_key(self.api_key_name)
-        pbar = comfy.utils.ProgressBar(self.max_new_tokens)
-        print(f"GPromptsEnhanced: {self.api} -> {self.base_url} model={self.model}")
+        pbar = progress_bar(self.max_new_tokens)
+        log.info(f"GPromptsEnhanced: {self.api} -> {self.base_url} model={self.model}"
+              + (f" with {len(images)} image(s)" if images else ""))
+        images_b64 = [prepared_image(t, self.image_megapixels)[0] for t in images]
 
         if self.api in RAW_STYLES:
             thinking = self.thinking != "off"
@@ -572,7 +678,8 @@ class APIPromptEnhancer(PromptEnhancerBase):
                 lambda prompt, max_tokens, stop_when: self._raw_stream(
                     prompt, max_tokens, stop_when, seed, api_key, pbar),
                 system_prompt, user_text, thinking, self.plan_tokens, self.max_new_tokens)
-            return finalize_result(raw, finish, thinking, contract, self.max_new_tokens)
+            return finalize_result(raw, finish, thinking, contract, self.max_new_tokens,
+                                   system_prompt=system_prompt, image_count=len(images), warn=warn)
 
         contract = PE_CONTRACT_KEY in system_prompt
 
@@ -582,47 +689,73 @@ class APIPromptEnhancer(PromptEnhancerBase):
             return answer_complete(content, False)
 
         content, reasoning, finish = self._chat(system_prompt, user_text, seed, api_key, pbar,
-                                                stop_when)
+                                                stop_when, images_b64)
         raw = content
         if reasoning and "</think>" not in content:
             raw = f"<think>{reasoning}</think>\n\n{content}"
-        return finalize_result(raw, finish, self.thinking == "on", contract, self.max_new_tokens)
+        return finalize_result(raw, finish, self.thinking == "on", contract, self.max_new_tokens,
+                               system_prompt=system_prompt, image_count=len(images), warn=warn)
 
 
 # ----------------------------------------------------------------------------
 # Node
 # ----------------------------------------------------------------------------
-class GPromptEnhancerLoaderAPI(io.ComfyNode):
-    @classmethod
-    def define_schema(cls):
-        prompts = [NO_SYSTEM_PROMPT] + list_llm_files(SYSTEM_PROMPT_EXTENSIONS)
-        return io.Schema(
-            node_id="GPromptEnhancerLoaderAPI",
-            display_name="Prompt Enhancer Loader (API)",
+def _api_schema(edit):
+    """Schema for the text-to-image API loader, or (edit=True) its image-edit sibling:
+    chat styles only (raw prompts can't carry images), edit defaults, image size."""
+    prompts = [NO_SYSTEM_PROMPT] + list_llm_files(SYSTEM_PROMPT_EXTENSIONS)
+    if edit:
+        api_input = io.Combo.Input(
+            "api", options=CHAT_STYLES, default=API_OPENAI_CHAT,
+            tooltip="Request style (chat styles only: they can carry images). The server must "
+                    "serve a vision model: llama-server with --mmproj, an Ollama vision model, "
+                    "or a hosted vision model.")
+        plan_tip = "Anthropic only: thinking budget (minimum 1024). Ignored otherwise."
+        penalty_default, penalty_tip = 0.0, "Qwen's settings use 0 for the edit rewriter."
+        model_tip = "Model name as the server knows it, e.g. qwen2.1-pe-i2i, qwen3-vl:8b, gpt-4.1."
+    else:
+        api_input = io.Combo.Input(
+            "api", options=API_STYLES, default=API_OPENAI_CHAT,
+            tooltip="Request style. 'OpenAI-compatible chat' works almost everywhere. The two "
+                    "'(raw prompt)' styles send the exact ChatML prompt the GGUF loader builds "
+                    "(think prefill, plan_tokens, early stop) - use them for Qwen-family models "
+                    "such as the Qwen-Image prompt rewriters.")
+        plan_tip = ("Raw prompt styles: cap on thinking before the plan is handed back for the "
+                    "answer (-1 = no cap). Anthropic: thinking budget (minimum 1024). Ignored "
+                    "otherwise.")
+        penalty_default, penalty_tip = 1.5, "~1.5 for the Qwen-Image T2I rewriter."
+        model_tip = ("Model name as the server knows it, e.g. qwen2.1-pe-t2i, qwen3:8b, "
+                     "gpt-4.1-mini, anthropic/claude-sonnet-4.")
+    extra_inputs = []
+    if edit:
+        extra_inputs.append(io.Combo.Input(
+            "llm_image_megapixels", options=LLM_IMAGE_MEGAPIXELS, default=DEFAULT_LLM_IMAGE_MP,
+            tooltip="Images are downscaled to about this size before they are sent (smaller is "
+                    "cheaper and faster). The encode node still gets the originals."))
+    return io.Schema(
+            node_id="GPromptEnhancerLoaderAPIEdit" if edit else "GPromptEnhancerLoaderAPI",
+            display_name="Prompt Enhancer Loader (API, edit)" if edit else "Prompt Enhancer Loader (API)",
             category="gprompts/enhancer",
             description=(
-                "An LLM behind an HTTP API (Ollama, llama-server, vLLM, SGLang, LM Studio, "
-                "OpenAI, OpenRouter, DashScope, Anthropic, or any OpenAI-compatible endpoint) for "
-                "'Dynamic Prompts with Enhancer'. API keys come from Settings > Gadzoinks > LLM, "
-                "never from the node, so they are not saved into workflows or images."
+                ("Image-edit prompt rewriter behind an HTTP API; it sees the reference images "
+                 "connected to 'Dynamic Prompts with Enhancer'. " if edit else
+                 "An LLM behind an HTTP API (Ollama, llama-server, vLLM, SGLang, LM Studio, "
+                 "OpenAI, OpenRouter, DashScope, Anthropic, or any OpenAI-compatible endpoint) for "
+                 "'Dynamic Prompts with Enhancer'. ")
+                + "API keys come from Settings > Gadzoinks > LLM, never from the node, so they "
+                  "are not saved into workflows or images."
             ),
-            search_aliases=["prompt enhancer", "ollama", "openai", "llm api", "openrouter"],
+            search_aliases=(["edit prompt enhancer", "i2i", "vision llm api"] if edit else
+                            ["prompt enhancer", "ollama", "openai", "llm api", "openrouter"]),
             inputs=[
-                io.Combo.Input("api", options=API_STYLES, default=API_OPENAI_CHAT,
-                               tooltip="Request style. 'OpenAI-compatible chat' works almost "
-                                       "everywhere. The two '(raw prompt)' styles send the exact "
-                                       "ChatML prompt the GGUF loader builds (think prefill, "
-                                       "plan_tokens, early stop) - use them for Qwen-family models "
-                                       "such as the Qwen-Image prompt rewriters."),
+                api_input,
                 io.String.Input("base_url", default="",
                                 tooltip="Server address. Blank = the style's local default "
                                         "(Ollama 127.0.0.1:11434, llama-server 127.0.0.1:8080, "
                                         "api.anthropic.com). Examples: http://192.168.1.20:11434/v1, "
                                         "https://api.openai.com/v1, https://openrouter.ai/api/v1, "
                                         "https://dashscope-intl.aliyuncs.com/compatible-mode/v1."),
-                io.String.Input("model", default="",
-                                tooltip="Model name as the server knows it, e.g. qwen2.1-pe-t2i, "
-                                        "qwen3:8b, gpt-4.1-mini, anthropic/claude-sonnet-4."),
+                io.String.Input("model", default="", tooltip=model_tip),
                 io.String.Input("api_key_name", default="",
                                 tooltip="Which API key to use from Settings > Gadzoinks > LLM. "
                                         "Blank = the default key (fine to leave unset for local "
@@ -642,9 +775,7 @@ class GPromptEnhancerLoaderAPI(io.ComfyNode):
                                        "(OpenAI, Ollama), reasoning (OpenRouter), enable_thinking "
                                        "(DashScope), chat_template_kwargs (vLLM, SGLang, llama-server)."),
                 io.Int.Input("plan_tokens", default=800, min=-1, max=65536, step=100,
-                             tooltip="Raw prompt styles: cap on thinking before the plan is handed "
-                                     "back for the answer (-1 = no cap). Anthropic: thinking budget "
-                                     "(minimum 1024). Ignored otherwise."),
+                             tooltip=plan_tip),
                 io.Int.Input("max_new_tokens", default=8192, min=256, max=131072, step=256),
                 io.Int.Input("context_length", default=16384, min=2048, max=1048576, step=1024,
                              tooltip="Ollama only (num_ctx). Ollama's small default context "
@@ -653,9 +784,9 @@ class GPromptEnhancerLoaderAPI(io.ComfyNode):
                 io.Float.Input("top_p", default=0.95, min=0.0, max=1.0, step=0.01),
                 io.Int.Input("top_k", default=20, min=0, max=500),
                 io.Float.Input("min_p", default=0.0, min=0.0, max=1.0, step=0.01, advanced=True),
-                io.Float.Input("presence_penalty", default=1.5, min=-2.0, max=2.0, step=0.05,
-                               tooltip="~1.5 for the Qwen-Image T2I rewriter. Parameters a server "
-                                       "rejects are dropped automatically."),
+                io.Float.Input("presence_penalty", default=penalty_default, min=-2.0, max=2.0,
+                               step=0.05, tooltip=penalty_tip + " Parameters a server rejects are "
+                                                  "dropped automatically."),
                 io.String.Input("keep_alive", default="", advanced=True,
                                 tooltip="Ollama only: how long the model stays loaded after a call "
                                         "(e.g. 5m, 1h, 0 = unload at once to free VRAM, -1 = forever). "
@@ -666,9 +797,19 @@ class GPromptEnhancerLoaderAPI(io.ComfyNode):
                                 tooltip="JSON merged into the request body for anything provider-"
                                         'specific, e.g. {"reasoning_effort": "low"} or '
                                         '{"options": {"num_gpu": 20}}. Do not put API keys here.'),
+            ] + extra_inputs + [
+                # last, so saved workflows keep their widget positions
+                io.Boolean.Input("second_try", display_name="2nd try on error", default=False,
+                                 tooltip=SECOND_TRY_TIP),
             ],
             outputs=[PromptEnhancerType.Output("enhancer", display_name="enhancer")],
         )
+
+
+class GPromptEnhancerLoaderAPI(io.ComfyNode):
+    @classmethod
+    def define_schema(cls):
+        return _api_schema(edit=False)
 
     @classmethod
     def validate_inputs(cls, model, system_prompt, extra_json, api_key_name):
@@ -694,7 +835,7 @@ class GPromptEnhancerLoaderAPI(io.ComfyNode):
     @classmethod
     def execute(cls, api, base_url, model, api_key_name, system_prompt, thinking, thinking_field,
                 plan_tokens, max_new_tokens, context_length, temperature, top_p, top_k, min_p,
-                presence_penalty, keep_alive, timeout, extra_json) -> io.NodeOutput:
+                presence_penalty, keep_alive, timeout, extra_json, second_try=False) -> io.NodeOutput:
         sp_path = None if system_prompt == NO_SYSTEM_PROMPT else resolve_llm_file(system_prompt)
         return io.NodeOutput(APIPromptEnhancer(
             api=api, base_url=base_url, model=model, api_key_name=api_key_name,
@@ -702,8 +843,31 @@ class GPromptEnhancerLoaderAPI(io.ComfyNode):
             plan_tokens=plan_tokens, max_new_tokens=max_new_tokens, context_length=context_length,
             temperature=temperature, top_p=top_p, top_k=top_k, min_p=min_p,
             presence_penalty=presence_penalty, keep_alive=keep_alive, timeout=timeout,
-            extra_json=extra_json))
+            extra_json=extra_json, second_try=second_try))
 
 
-API_NODES = {"GPromptEnhancerLoaderAPI": GPromptEnhancerLoaderAPI}
-API_NODE_DISPLAY_NAME_MAPPINGS = {"GPromptEnhancerLoaderAPI": "Prompt Enhancer Loader (API)"}
+class GPromptEnhancerLoaderAPIEdit(GPromptEnhancerLoaderAPI):
+    @classmethod
+    def define_schema(cls):
+        return _api_schema(edit=True)
+
+    @classmethod
+    def execute(cls, api, base_url, model, api_key_name, system_prompt, thinking, thinking_field,
+                plan_tokens, max_new_tokens, context_length, temperature, top_p, top_k, min_p,
+                presence_penalty, keep_alive, timeout, extra_json,
+                llm_image_megapixels=DEFAULT_LLM_IMAGE_MP, second_try=False) -> io.NodeOutput:
+        sp_path = None if system_prompt == NO_SYSTEM_PROMPT else resolve_llm_file(system_prompt)
+        return io.NodeOutput(APIPromptEnhancer(
+            api=api, base_url=base_url, model=model, api_key_name=api_key_name,
+            system_prompt_path=sp_path, thinking=thinking, thinking_field=thinking_field,
+            plan_tokens=plan_tokens, max_new_tokens=max_new_tokens, context_length=context_length,
+            temperature=temperature, top_p=top_p, top_k=top_k, min_p=min_p,
+            presence_penalty=presence_penalty, keep_alive=keep_alive, timeout=timeout,
+            extra_json=extra_json, task=TASK_EDIT, image_megapixels=llm_image_megapixels,
+            second_try=second_try))
+
+
+API_NODES = {"GPromptEnhancerLoaderAPI": GPromptEnhancerLoaderAPI,
+             "GPromptEnhancerLoaderAPIEdit": GPromptEnhancerLoaderAPIEdit}
+API_NODE_DISPLAY_NAME_MAPPINGS = {"GPromptEnhancerLoaderAPI": "Prompt Enhancer Loader (API)",
+                                  "GPromptEnhancerLoaderAPIEdit": "Prompt Enhancer Loader (API, edit)"}

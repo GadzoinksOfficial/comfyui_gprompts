@@ -1,5 +1,7 @@
 import io
+import logging
 import os
+import sys
 import re
 import json
 import random
@@ -10,9 +12,77 @@ import torch
 import folder_paths
 
 
+# ----------------------------------------------------------------------------
+# Logging. One logger for the pack ("gprompts", children "gprompts.<part>").
+# No handler of our own: records go up to ComfyUI's console/log panel handler.
+# Level: follows ComfyUI (--verbose) unless debug is switched on, either in
+# Settings > Gadzoinks > Debug logging, or with GPROMPTS_LOG=DEBUG (which wins).
+# ----------------------------------------------------------------------------
+log = logging.getLogger("gprompts")
+
+
+class _DebugToConsole(logging.Handler):
+    """ComfyUI's console handler only shows its own --verbose level (INFO by
+    default), so our DEBUG records would never appear. While debug logging is
+    on, this prints them. INFO and above still go through ComfyUI's handler,
+    so nothing is printed twice; with ComfyUI itself at --verbose DEBUG it
+    stays quiet for the same reason."""
+
+    def __init__(self):
+        super().__init__(logging.DEBUG)
+        try:
+            from app.logger import ColoredFormatter        # ComfyUI's [DEBUG] style
+            self.setFormatter(ColoredFormatter("%(message)s"))
+        except Exception:
+            self.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))
+
+    def emit(self, record):
+        if record.levelno >= logging.INFO or logging.getLogger().isEnabledFor(logging.DEBUG):
+            return
+        try:
+            stream = sys.stdout             # ComfyUI swaps stdout to feed its log panel
+            stream.write(self.format(record) + "\n")
+            stream.flush()
+        except Exception:
+            self.handleError(record)
+
+
+_DEBUG_HANDLER = _DebugToConsole()
+
+
+def _show_debug(on):
+    if on and _DEBUG_HANDLER not in log.handlers:
+        log.addHandler(_DEBUG_HANDLER)
+    elif not on and _DEBUG_HANDLER in log.handlers:
+        log.removeHandler(_DEBUG_HANDLER)
+
+
+_ENV_LEVEL = logging.getLevelName(os.environ.get("GPROMPTS_LOG", "").strip().upper() or "NOTSET")
+if isinstance(_ENV_LEVEL, int) and _ENV_LEVEL != logging.NOTSET:
+    log.setLevel(_ENV_LEVEL)
+    _show_debug(_ENV_LEVEL <= logging.DEBUG)
+else:
+    _ENV_LEVEL = None
+
+
+def get_logger(part):
+    return logging.getLogger(f"gprompts.{part}")
+
+
+def set_debug(on):
+    """Debug logging on/off from the Gadzoinks setting (GPROMPTS_LOG wins)."""
+    if _ENV_LEVEL is not None:
+        return
+    new = logging.DEBUG if on else logging.NOTSET
+    if log.level != new:
+        log.setLevel(new)
+        _show_debug(bool(on))
+        log.info("Gadzoinks: debug logging %s", "on" if on else "off")
+
+
 def dprint(a):
-    print(a)
-    pass
+    """Debug detail: shown only with debug logging on."""
+    log.debug("%s", a)
 
 # (♩ ♪ ♫ ♬, U+2669–266C)
 
@@ -383,10 +453,10 @@ class DynamicPromptEngine:
                             break  # Use the first array found
                     else:
                         # No array found in the object
-                        print(f"No array value found in JSON object: {json_path}")
+                        log.warning(f"No array value found in JSON object: {json_path}")
                         options = []
             except json.JSONDecodeError:
-                print(f"Error parsing JSON file: {json_path}")
+                log.warning(f"Error parsing JSON file: {json_path}")
         dprint(f"options:{options}")
         # If no JSON or empty result, try TXT
         if not options:
@@ -404,7 +474,7 @@ class DynamicPromptEngine:
                         if line and not line.startswith('#'):
                             options.append(line)
                 except Exception as e:
-                    print(f"Error reading TXT file: {txt_path}, {str(e)}")
+                    log.warning(f"Error reading TXT file: {txt_path}, {str(e)}")
 
         # Cache the result
         self.wildcard_cache[wildcard_name] = options
@@ -523,7 +593,7 @@ class DynamicPromptEngine:
             if os.path.exists(wildcard_file):
                 return wildcard_file
         except Exception as e:
-            print(f"Error finding wildcard file: {e}")
+            log.warning(f"Error finding wildcard file: {e}")
 
         return None
 

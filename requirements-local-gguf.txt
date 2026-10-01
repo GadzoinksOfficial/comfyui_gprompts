@@ -1,0 +1,5 @@
+# Optional: only needed for the "Prompt Enhancer Loader (GGUF)" node.
+# Install a build that matches your CUDA version and GPU, e.g. a prebuilt CUDA
+# wheel from https://github.com/JamePeng/llama-cpp-python/releases
+# (Qwen3.5-based GGUFs need llama-cpp-python 0.3.35+ or the JamePeng fork 0.3.47+).
+llama-cpp-python>=0.3.35

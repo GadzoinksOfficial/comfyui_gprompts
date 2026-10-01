@@ -7,6 +7,7 @@ https://github.com/GadzoinksOfficial/comfyui_gprompts
 import time
 import os
 import re
+import copy
 import json
 import random
 import socket
@@ -41,7 +42,9 @@ from PIL.ExifTags import TAGS
 import json
 import threading
 from .immich_importer import ImmichImporter
-from .common import dprint, DynamicPromptEngine
+from .common import dprint, DynamicPromptEngine, get_logger, set_debug
+
+log = get_logger("settings")
 
 
 # Web directory for documentation files
@@ -116,6 +119,8 @@ def apply_settings(params):
             dprint(f"setting [{key}]={shown}")
         if not get_missing(the_settings) or any(the_settings.get(k) for k in LLM_SETTING_KEYS):
             persist_settings(dict(the_settings))
+    if "debug_logging" in params:
+        set_debug(parse_bool_setting(params.get("debug_logging")))
     # Wake any execute() currently waiting on a settings refresh
     settings_updated.set()
     return skipped
@@ -176,7 +181,7 @@ def load_persisted_settings():
     except FileNotFoundError:
         pass
     except Exception as e:
-        print(f"Gadzoinks: could not read persisted settings: {e}")
+        log.warning(f"Gadzoinks: could not read persisted settings: {e}")
     return {}
 
 def persist_settings(settings):
@@ -188,7 +193,7 @@ def persist_settings(settings):
             json.dump(settings, f, indent=2)
         os.replace(tmp, path)
     except Exception as e:
-        print(f"Gadzoinks: could not persist settings: {e}")
+        log.warning(f"Gadzoinks: could not persist settings: {e}")
 
 # Load last known-good settings at startup so a server restart (or a frontend
 # that never connects, e.g. headless/API usage) still has working values.
@@ -234,13 +239,13 @@ def get_immich_settings(wait_seconds=4.0):
             if v not in (None, ""):
                 merged[k] = v
         if not get_missing(merged):
-            print("Gadzoinks: frontend unreachable, using persisted settings")
+            log.info("Gadzoinks: frontend unreachable, using persisted settings")
             with settings_lock:
                 the_settings.update(merged)
             return merged
     return snap
 
-print("LOADING GPROMPTS")
+dprint("LOADING GPROMPTS")
 
 
 ###
@@ -326,29 +331,88 @@ def extract_computed_prompt(data):
     
     return None
 
-def add_note_node_to_workflow( workflow, note_text=None):
-    """Helper to add a note node to workflow"""
-    nodes = workflow.get("nodes", [])
+NOTE_WIDTH = 425
+NOTE_MIN_HEIGHT = 120
+NOTE_MAX_HEIGHT = 600
+NOTE_GAP = 60          # space between the note and the node below it (clears that node's title bar)
 
-    # Get next available node ID
+
+def _xy(value, default=(0.0, 0.0)):
+    """A LiteGraph pos/size: [x, y] or the older {"0": x, "1": y}."""
+    try:
+        if isinstance(value, dict):
+            return float(value.get("0", value.get(0))), float(value.get("1", value.get(1)))
+        return float(value[0]), float(value[1])
+    except (TypeError, ValueError, IndexError, KeyError, AttributeError):
+        return default
+
+
+def _note_height(note_text):
+    """Roughly fit the note to its text (about 55 characters per line, 18 px per line)."""
+    lines = 0
+    for line in str(note_text or "").splitlines() or [""]:
+        lines += max(1, -(-len(line) // 55))
+    return int(min(NOTE_MAX_HEIGHT, max(NOTE_MIN_HEIGHT, 40 + lines * 18)))
+
+
+def note_position(workflow, height):
+    """Just above the topmost node, lined up with it. Groups count too, so the
+    note never covers a group title. Empty workflow: the old top-left spot."""
+    tops = []
+    for node in workflow.get("nodes", []) or []:
+        if "pos" in node:
+            x, y = _xy(node.get("pos"))
+            tops.append((y, x))
+    for group in workflow.get("groups", []) or []:
+        bounding = group.get("bounding") if isinstance(group, dict) else None
+        if isinstance(bounding, (list, tuple)) and len(bounding) >= 2:
+            try:
+                tops.append((float(bounding[1]), float(bounding[0])))
+            except (TypeError, ValueError):
+                pass
+    if not tops:
+        return [50, 50]
+    top_y, top_x = min(tops)
+    return [round(top_x), round(top_y - height - NOTE_GAP)]
+
+
+def add_note_to_pnginfo(extra_pnginfo, note_text):
+    """Give this save its own copy of the workflow with the note added, and
+    return it. ComfyUI passes the same workflow object to every save node in a
+    run, so adding to it in place leaks one node's note into the next save
+    (e.g. a video's note showing up in the last-frame image as a second note)."""
+    workflow = copy.deepcopy(extra_pnginfo["workflow"])
+    add_note_node_to_workflow(workflow, note_text)
+    extra_pnginfo["workflow"] = workflow
+    return workflow
+
+
+def add_note_node_to_workflow( workflow, note_text=None):
+    """Add a Note node holding note_text, just above the topmost node
+    (in place: pass a copy, see add_note_to_pnginfo)."""
+    nodes = workflow.setdefault("nodes", [])
+
+    # Next free node id (ComfyUI ids are numbers; last_node_id must cover it)
     max_id = 0
     for node in nodes:
-        node_id = node.get("id", "0")
         try:
-            node_id_int = int(node_id)
-            max_id = max(max_id, node_id_int)
+            max_id = max(max_id, int(node.get("id", 0)))
         except (ValueError, TypeError):
             continue
+    try:
+        max_id = max(max_id, int(workflow.get("last_node_id") or 0))
+    except (ValueError, TypeError):
+        pass
+    note_node_id = max_id + 1
 
-    note_node_id = str(max_id + 1)
-    # Create note node
+    height = _note_height(note_text)
     note_node = {
         "id": note_node_id,
         "type": "Note",
-        "pos": [50, 50],  # Top-left corner
-        "size": {"0": 425, "1": 180},
+        "pos": note_position(workflow, height),
+        "size": [NOTE_WIDTH, height],
         "flags": {},
-        "order": len(nodes) + 1,
+        "order": len(nodes),
         "mode": 0,
         "inputs": [],
         "outputs": [],
@@ -356,7 +420,8 @@ def add_note_node_to_workflow( workflow, note_text=None):
         "widgets_values": [note_text]
     }
 
-    workflow["nodes"].append(note_node)
+    nodes.append(note_node)
+    workflow["last_node_id"] = note_node_id
 
 def extract_exif(image):
     """Extract metadata from image including ComfyUI prompt data"""
@@ -463,7 +528,7 @@ class LoadImagesBatch:
     RETURN_NAMES = ("image", "filename_text", "width", "height", "prompt")
     FUNCTION = "load_batch_images"
 
-    CATEGORY = "Image/Loaders"
+    CATEGORY = "gprompts/image"
 
 
     def load_batch_images(self, path, pattern='*', index=0, mode="single_image", 
@@ -609,7 +674,7 @@ class GImageSaveWithExtraMetadata(SaveImage):
             },
         }
 
-    CATEGORY = "image"
+    CATEGORY = "gprompts/image"
     RETURN_TYPES = ()
     OUTPUT_NODE = True
     FUNCTION = "execute"
@@ -637,8 +702,7 @@ class GImageSaveWithExtraMetadata(SaveImage):
 
         # Add note node to workflow
         if note_text and prompt and "workflow" in extra_pnginfo_new:
-            workflow = extra_pnginfo_new["workflow"]
-            add_note_node_to_workflow(workflow, note_text)
+            workflow = add_note_to_pnginfo(extra_pnginfo_new, note_text)
 
         # Save image
         saved = super().save_images(image, filename_prefix, prompt, extra_pnginfo_new)
@@ -708,7 +772,7 @@ class GImageSaveImmich(SaveImage):
             },
         }
 
-    CATEGORY = "image"
+    CATEGORY = "gprompts/immich"
     RETURN_TYPES = ()
     OUTPUT_NODE = True
     FUNCTION = "execute"
@@ -774,8 +838,7 @@ class GImageSaveImmich(SaveImage):
 
         # Add note node to workflow
         if note_text and  "workflow" in extra_pnginfo_new:
-            workflow = extra_pnginfo_new["workflow"]
-            add_note_node_to_workflow(workflow, note_text)
+            workflow = add_note_to_pnginfo(extra_pnginfo_new, note_text)
 
         # Save image (always use save_images() to create EXIF and workflow data)
         #dprint(f"extra_pnginfo_new:\n:{extra_pnginfo_new}")
@@ -797,7 +860,7 @@ class GImageSaveImmich(SaveImage):
         if not save_also:
             # if not saving we get stuck at 00001 , so use a counter intead
             imm_filename = re.sub(r'(\d+)(?=[^_]*$)', str(filename_counter), imm_filename)
-        dprint(f"saved:{saved}")
+        dprint(f"saved:{saved.get('ui') if isinstance(saved, dict) else saved}")
         dprint(f"imm_filename:{imm_filename}")
         dprint(f"imm_fullpath:{imm_fullpath}")
         # Validation, I am putting this after the image is saved to file system
@@ -809,10 +872,9 @@ class GImageSaveImmich(SaveImage):
         url = f"http://{server}:{port}"
         missing = get_missing(settings)
         if missing:
-            print("\nIMMICH CONFIGURATION ERROR")
-            print(f"Save Image to Immich Server Node Missing: {', '.join(missing)}")
-            print("Please configure in Settings:Gadzoinks")
-            print(f"settings snapshot:{masked_settings(settings)}")
+            log.error("IMMICH CONFIGURATION ERROR - Save to Immich Server node is missing: %s. "
+                      "Please configure in Settings > Gadzoinks.", ", ".join(missing))
+            log.debug("settings snapshot: %s", masked_settings(settings))
             # Generate an error so the user gets alerted to what is wrong
             error_msg = f": Missing {', '.join(missing)}. Open Settings, Gadzoinks to configure."
             raise ValueError(error_msg)
@@ -891,7 +953,7 @@ class StringFormatter:
     RETURN_TYPES = ("STRING",)
     RETURN_NAMES = ("formatted_string",)
     FUNCTION = "format_string"
-    CATEGORY = "utils/text"
+    CATEGORY = "gprompts/text"
     
     DESCRIPTION = (
         "Node that builds strings by replacing $variables. "
@@ -1065,7 +1127,7 @@ class GPrompts(DynamicPromptEngine):
     RETURN_TYPES = ("STRING", "STRING", "STRING", "INT")
     RETURN_NAMES = ("text", "dynamic_prompt", "computed_prompt", "seed")
     FUNCTION = "process_dynamic_prompt"
-    CATEGORY = "text"
+    CATEGORY = "gprompts"
     
     DESCRIPTION = (
         "Dynamic prompt generator with support for random {}, sequential {{}}, and wildcard __word__ syntax. "

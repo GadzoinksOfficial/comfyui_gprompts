@@ -25,6 +25,7 @@ WEB_DIRECTORY = "./web/js"
 
 __all__ = ['NODE_CLASS_MAPPINGS', 'NODE_DISPLAY_NAME_MAPPINGS', 'WEB_DIRECTORY']
 
-print(f"Dynamic Prompts for ComfyUI loaded: {list(NODE_CLASS_MAPPINGS.keys())}")
+import logging
+logging.getLogger("gprompts").info(f"Dynamic Prompts for ComfyUI loaded: {list(NODE_CLASS_MAPPINGS.keys())}")
 
 
