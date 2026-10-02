@@ -227,3 +227,91 @@ async function legacyGetFallback(payload) {
     return api.fetchApi(`/gprompts/setting?${urlParams.toString()}`);
 }
 
+
+// ---------------------------------------------------------------------------
+// Load Image From Immich: "choose album" / "choose tag" pickers.
+// The album and tag text boxes stay as they are (typeable, linkable, saved as
+// before); each picker lists the names from Immich and fills its box. The
+// picker buttons are not saved with the workflow or sent to the server.
+// ---------------------------------------------------------------------------
+const IMMICH_ANY = "(any)";
+const IMMICH_REFRESH = "↻ refresh list";
+
+async function fetchImmichNames(refresh) {
+    try {
+        const response = await api.fetchApi(`/gadzoinks/immich/names${refresh ? "?refresh=1" : ""}`);
+        if (!response.ok) {
+            return { albums: [], tags: [], error: `the server answered ${response.status} (restart ComfyUI after updating the node?)` };
+        }
+        return await response.json();
+    } catch (e) {
+        return { albums: [], tags: [], error: String(e) };
+    }
+}
+
+function menuEvent(event) {
+    // The button passes its pointer event in most frontend versions; otherwise
+    // open where the mouse last was on the canvas. The menu only places itself
+    // at a real MouseEvent, so anything else is wrapped in one.
+    const canvas = app.canvas;
+    let src = event;
+    if (!src || src.clientX === undefined) src = canvas?.last_mouse_event || canvas?.pointer?.eDown;
+    if (!src || src.clientX === undefined) {
+        const rect = canvas?.canvas?.getBoundingClientRect?.() || { left: 100, top: 100 };
+        src = { clientX: rect.left + 100, clientY: rect.top + 100 };
+    }
+    if (src instanceof MouseEvent) return src;
+    return new MouseEvent("pointerdown", { clientX: src.clientX, clientY: src.clientY, bubbles: true });
+}
+
+async function openImmichPicker(node, target, field, event, refresh = false) {
+    const ev = menuEvent(event);
+    const data = await fetchImmichNames(refresh);
+    const names = (field === "album" ? data.albums : data.tags) || [];
+    const values = [IMMICH_ANY, ...names, IMMICH_REFRESH];
+    if (data.error) {
+        values.splice(1, 0, { content: `⚠ ${data.error}`, disabled: true });
+    } else if (!names.length) {
+        values.splice(1, 0, { content: `no ${field}s in Immich`, disabled: true });
+    }
+    new LiteGraph.ContextMenu(values, {
+        event: ev,
+        // "dark" is the combo-box style; the frontend adds a type-to-filter box to it.
+        className: "dark",
+        title: field === "album" ? "Immich albums" : "Immich tags",
+        callback: (value) => {
+            const v = typeof value === "string" ? value : value?.content;
+            if (v === IMMICH_REFRESH) {
+                openImmichPicker(node, target, field, ev, true);
+                return;
+            }
+            if (typeof value !== "string") return;          // a disabled note
+            target.value = v === IMMICH_ANY ? "" : v;
+            target.callback?.(target.value);
+            node.setDirtyCanvas?.(true, true);
+            app.graph?.setDirtyCanvas?.(true, true);
+        },
+    });
+}
+
+app.registerExtension({
+    name: "Gadzoinks.ImmichLoaderPickers",
+    async beforeRegisterNodeDef(nodeType, nodeData) {
+        if (nodeData?.name !== "GLoadImageFromImmich") return;
+        const onNodeCreated = nodeType.prototype.onNodeCreated;
+        nodeType.prototype.onNodeCreated = function () {
+            const r = onNodeCreated?.apply(this, arguments);
+            for (const field of ["album", "tag"]) {
+                const target = this.widgets?.find((w) => w.name === field);
+                if (!target) continue;
+                // Appended after all real widgets, and not serialized, so saved
+                // workflows keep their widget positions.
+                const button = this.addWidget("button", `▾ choose ${field}`, null,
+                    (widget, canvas, node, pos, event) => openImmichPicker(this, target, field, event),
+                    { serialize: false });
+                button.serialize = false;
+            }
+            return r;
+        };
+    },
+});

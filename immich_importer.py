@@ -45,6 +45,10 @@ def dprint(s):
     level = logging.WARNING if _PROBLEM.search(s) else logging.DEBUG
     _log.log(level, "ImmichImporter %s", s)
 
+class ImmichError(RuntimeError):
+    """An Immich request that failed, with a message for the user."""
+
+
 class ImmichImporter:
     def __init__(self, server_url, api_key=None,importer_name = "ImmichImporter"):
         self.server_url = server_url.rstrip('/')
@@ -455,6 +459,93 @@ class ImmichImporter:
             if hasattr(e, 'response') and e.response:
                 dprint(f"  Response: {e.response.text}")
     
+    # ------------------------------------------------------------------
+    # Reading (Load From Immich). These raise ImmichError instead of
+    # returning [] so a loader can tell "empty" from "not allowed".
+    # ------------------------------------------------------------------
+    PERMISSION_HINT = {
+        "albums": "album.read", "tags": "tag.read", "search": "asset.read",
+        "original": "asset.download", "thumbnail": "asset.view",
+    }
+
+    def _request(self, method, path, timeout, **kwargs):
+        try:
+            return self.session.request(method, f"{self.api_base}{path}", timeout=timeout, **kwargs)
+        except requests.exceptions.Timeout as e:
+            raise ImmichError(f"Immich at {self.server_url} did not answer within {timeout} s") from e
+        except requests.exceptions.ConnectionError as e:
+            raise ImmichError(f"cannot reach Immich at {self.server_url} (is it running, and are "
+                              f"the hostname and port in Settings > Gadzoinks right?)") from e
+        except requests.exceptions.RequestException as e:
+            raise ImmichError(f"request to Immich at {self.server_url} failed: "
+                              f"{e.__class__.__name__}") from e
+
+    def _get_json(self, method, path, what, timeout=30, **kwargs):
+        response = self._request(method, path, timeout, **kwargs)
+        self._raise_for(response, what)
+        return response.json()
+
+    def _raise_for(self, response, what):
+        if response.status_code in (401, 403):
+            raise ImmichError(
+                f"Immich refused the request ({response.status_code}). The API key needs the "
+                f"'{self.PERMISSION_HINT.get(what, what)}' permission (or 'all').")
+        if response.status_code >= 400:
+            raise ImmichError(f"Immich {what} request failed: HTTP {response.status_code} "
+                              f"{response.text[:300]}")
+
+    def list_albums(self):
+        """All albums the key's user owns or that are shared with them."""
+        return self._get_json("GET", "/albums", "albums")
+
+    def get_album(self, album_id):
+        return self._get_json("GET", f"/albums/{album_id}", "albums")
+
+    def list_tags(self):
+        return self._get_json("GET", "/tags", "tags")
+
+    def search_images(self, album_id=None, tag_id=None, is_favorite=None, rating=None,
+                      page_size=1000, max_pages=200):
+        """Every image (not video) matching the given filters, with EXIF and people.
+        rating matches one value exactly. Uses albumIds/tagIds/isFavorite/rating and
+        page numbers: deprecated in Immich 3.2 but still accepted, and the only form
+        older servers understand."""
+        body = {"type": "IMAGE", "withExif": True, "withPeople": True, "size": page_size}
+        if album_id:
+            body["albumIds"] = [album_id]
+        if tag_id:
+            body["tagIds"] = [tag_id]
+        if is_favorite is not None:
+            body["isFavorite"] = bool(is_favorite)
+        if rating is not None:
+            body["rating"] = int(rating)
+        items, page = [], 1
+        for _ in range(max_pages):
+            body["page"] = page
+            data = self._get_json("POST", "/search/metadata", "search", json=body)
+            assets = (data or {}).get("assets") or {}
+            batch = assets.get("items") or []
+            items.extend(batch)
+            next_page = assets.get("nextPage")
+            if not batch or len(batch) < page_size or not next_page:
+                break
+            try:
+                page = int(next_page)
+            except (TypeError, ValueError):
+                page += 1
+        return items
+
+    def download_original(self, asset_id, timeout=120):
+        return self._download(f"/assets/{asset_id}/original", "original", timeout)
+
+    def download_preview(self, asset_id, timeout=60):
+        return self._download(f"/assets/{asset_id}/thumbnail?size=preview", "thumbnail", timeout)
+
+    def _download(self, path, what, timeout):
+        response = self._request("GET", path, timeout)
+        self._raise_for(response, what)
+        return response.content
+
     def import_photos(self, source_dir, album_name=None, recursive=False, extensions=None):
         """Import photos from a directory"""
         if extensions is None:

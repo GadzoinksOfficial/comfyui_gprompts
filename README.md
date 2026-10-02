@@ -684,7 +684,7 @@ Supported file types: png, jpg, jpeg, bmp, tiff, webp. Files are sorted by path,
 
 # Immich Nodes
 
-Save images, video, and audio to an Immich server: https://immich.app
+Save images, video, and audio to an Immich server, and load images back from it: https://immich.app
 
 ## Configuration (shared by all Immich nodes)
 Create an API Key in your Immich server.
@@ -697,6 +697,9 @@ Enter the API Key, the Hostname, and the Port.
 - **Default Tags**: these tags are combined with the tags in the node.
 
 Settings are remembered on the ComfyUI server, so saving keeps working after a restart or if the browser is disconnected.
+
+To load with *Load Image From Immich*, the API key also needs `album.read`, `tag.read`,
+`asset.read`, `asset.download` and `asset.view` (or simply `all`).
 
 ## Save Image To Immich Server
 
@@ -737,6 +740,51 @@ Immich only handles photos and videos, so it does not support audio files such a
 - Ubuntu/Debian: `sudo apt install ffmpeg`
 
 You can check that it is installed by running `ffmpeg -version` in a terminal.
+
+## Load Image From Immich
+Steps through the Immich images that match your filters, one image per run, like *Load Images
+Batch* does for a folder. Everything happens on the ComfyUI server, so it works from any browser
+and nothing is uploaded.
+
+**Filters**: set any combination; an image must pass every filter that is set.
+- **album**: only images in this album. Blank = any.
+- **tag**: only images with this tag. Blank = any. For a nested tag use the full name, e.g.
+  `Trips/Japan`.
+- **favorites_only**: only images marked as favorite.
+- **min_rating**: this many stars or more: `2+` takes 2, 3, 4 and 5 stars. Unrated images count
+  as 0, so any rating filter leaves them out.
+
+Example: album `Morocco`, tag `Canon`, favorites_only on, min_rating `2+` gives the favorite
+Canon shots in the Morocco album rated 2 stars or more.
+
+**Choosing names**: the **▾ choose album** and **▾ choose tag** buttons at the bottom of the node
+list the albums and tags in your Immich (type to filter the list). Picking one fills the box;
+`(any)` clears it; `↻ refresh list` reads them again from Immich (they are otherwise kept for a
+minute). You can also type a name, or connect a text output to the box. Names are not
+case-sensitive; one that isn't found gives an error listing the albums or tags there are.
+
+- **index**: which image, oldest first by date taken; wraps around. Leave the control under it on
+  `increment` and queue as many runs as the `count` output says. Videos are skipped.
+- The list is read from Immich when the index is 0 and kept for the rest of the batch, so photos
+  added to the album mid-batch don't shift the numbering. They are picked up at the next run from 0.
+
+**Outputs**
+- `image`, `mask` (from transparency, as Load Image makes it), `width`, `height`.
+- `prompt`, `negative_prompt`: read from the original file. In order: the prompt the Gadzoinks save
+  nodes store (`computed_prompt`, trigger words and LLM rewrite included), the prompt traced
+  through the ComfyUI workflow in the file (through the sampler's positive and negative inputs),
+  or A1111/Forge `parameters` (PNG text or JPEG EXIF). Empty for photos with no prompt in them.
+- `description`: the description in Immich. For camera photos this is often the useful text; wire
+  it into Dynamic Prompts with Enhancer to describe each photo.
+- `filename`, `asset_id`, `index`, `count` (how many images match), and `metadata` (JSON: the
+  filters, date taken, people, tags, favorite, rating, and where the prompt came from).
+
+**File formats**: the original is downloaded. HEIC photos need `pillow-heif` in ComfyUI's Python
+(`python -m pip install pillow-heif`); without it, and for camera RAW files, the node uses Immich's
+preview JPEG instead (about 1440 px, no prompt metadata) and says so in the log.
+
+**Immich versions**: it uses the album and tag search filters that Immich 3.2 deprecated but
+still accepts, and falls back to the album's own asset list on older servers.
 
 ** Immich support **
 All of these nodes work with standard Immich, but I have my own fork of Immich with extra features such as the ability to see the prompt and metadata of an Image, and the ability to search for text in a prompt ( find all images of dragons )
