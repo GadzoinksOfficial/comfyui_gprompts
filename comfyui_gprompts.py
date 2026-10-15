@@ -310,8 +310,9 @@ def extract_computed_prompt(data):
     """
     # If data is a dictionary, check its values
     if isinstance(data, dict):
-        # Check if current node has class_type == 'GPrompts'
-        if data.get('class_type') == 'GPrompts':
+        # GPrompts / GPromptsEnhanced (not the GPromptEnhancer* loaders)
+        class_type = data.get('class_type')
+        if isinstance(class_type, str) and class_type.startswith('GPrompts'):
             # Extract computed_prompt from _meta
             if '_meta' in data and 'computed_prompt' in data['_meta']:
                 return data['_meta']['computed_prompt']

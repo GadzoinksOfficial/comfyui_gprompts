@@ -383,7 +383,7 @@ class GLoadImageFromImmich(cio.ComfyNode):
                 cio.Combo.Input("min_rating", options=RATING_OPTIONS, default="any",
                                 tooltip="Only images with at least this many stars: '2+' takes "
                                         "2, 3, 4 and 5 stars. Unrated images count as 0."),
-                cio.Int.Input("index", default=0, min=0, max=1_000_000,
+                cio.Int.Input("index", default=0, min=-1_000_000, max=1_000_000,
                               control_after_generate=_INDEX_CONTROL,
                               tooltip="Which image, oldest first (wraps around). With 'increment', "
                                       "each queued run loads the next one; queue 'count' runs to do "

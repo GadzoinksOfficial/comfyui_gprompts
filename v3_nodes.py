@@ -21,6 +21,11 @@ from  .common import  pil_to_comfy, cover_from_tensor, fallback_cover,fallback_c
 #
 #
 
+def resolve_computed_prompt(prompt, workflow_id):
+    """The prompt this run actually used: from this run's GPrompts / GPromptsEnhanced
+    node in the prompt graph, else the per-workflow last prompt."""
+    return extract_computed_prompt(prompt) or get_last_prompt(workflow_id)
+
 def make_mp4(mp3_path, image=None, notes="",metadata={}):
     cover = cover_from_tensor(image) if image is not None else fallback_cover()
     # libx264 requires even dimensions
@@ -118,13 +123,11 @@ class GSaveAudioToImmich(SaveAudioAdvanced):
         last_prompt = get_last_prompt(workflow_id)
         if not note_text and last_prompt:
             note_text = f'Created with prompt "{last_prompt}"'
-        #if not note_text and last_prompt:
-        #    note_text = f'Image created with prompt "{last_prompt}"'
-        #if "computed_prompt" not in extra_pnginfo_new:
-        #    if computed_prompt:
-        #        extra_pnginfo_new["computed_prompt"] = computed_prompt
-        #    else:
-        #        extra_pnginfo_new["computed_prompt"] = last_prompt
+        # Same as the image save node: send the computed prompt to /gz/ingest.
+        if "computed_prompt" not in extra_pnginfo_new:
+            computed_prompt = resolve_computed_prompt(prompt, workflow_id)
+            if computed_prompt:
+                extra_pnginfo_new["computed_prompt"] = computed_prompt
         if not album_name:
             album_name = settings.get('immich_default_album')
         # Add note node to workflow
@@ -274,13 +277,11 @@ class GSaveVideoToImmich(SaveVideo):
         last_prompt = get_last_prompt(workflow_id)
         if not note_text and last_prompt:
             note_text = f'Created with prompt "{last_prompt}"'
-        #if not note_text and last_prompt:
-        #    note_text = f'Image created with prompt "{last_prompt}"'
-        #if "computed_prompt" not in extra_pnginfo_new:
-        #    if computed_prompt:
-        #        extra_pnginfo_new["computed_prompt"] = computed_prompt
-        #    else:
-        #        extra_pnginfo_new["computed_prompt"] = last_prompt
+        # Same as the image save node: send the computed prompt to /gz/ingest.
+        if "computed_prompt" not in extra_pnginfo_new:
+            computed_prompt = resolve_computed_prompt(prompt, workflow_id)
+            if computed_prompt:
+                extra_pnginfo_new["computed_prompt"] = computed_prompt
         if not album_name:
             album_name = settings.get('immich_default_album')
 
