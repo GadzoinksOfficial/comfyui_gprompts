@@ -662,11 +662,11 @@ class GImageSaveWithExtraMetadata(SaveImage):
             "optional": {
                 "notes": ("*", {
                     "default": "",
-                    "tooltip": "Text for notes node that is embedded in saved image"
+                    "tooltip": "Optional text for the Note node embedded in the saved workflow. Takes priority over computed_prompt for the note only"
                 }),
                 "computed_prompt": ("*", {
                     "default": "",
-                    "tooltip": "The computed prompt from Gprompts Node to embed in saved image (use this OR notes)"
+                    "tooltip": "Prompt recorded in metadata/Immich (e.g. an enhanced caption). Also used as the note unless notes is wired"
                 })
             },
             "hidden": {
@@ -691,12 +691,13 @@ class GImageSaveWithExtraMetadata(SaveImage):
             extra_pnginfo_new = {}
         else:
             extra_pnginfo_new = extra_pnginfo.copy()
-        note_text = None
+        # Same rule as GImageSaveImmich: computed_prompt goes to metadata;
+        # wired notes win the note, otherwise the note is built from it.
         if computed_prompt:
             extra_pnginfo_new["computed_prompt"] = computed_prompt
+        note_text = notes or None
+        if not note_text and computed_prompt:
             note_text = f'Image created with prompt "{computed_prompt}"'
-        if notes and not computed_prompt:
-            note_text = notes
 
         if not "%" in filename_prefix:
             filename_prefix = datetime.now().strftime("%Y-%m-%d") + os.path.sep + filename_prefix
@@ -759,11 +760,11 @@ class GImageSaveImmich(SaveImage):
             "optional": {
                 "notes": ("*", {
                     "default": "",
-                    "tooltip": "Optional text for notes node that is embedded in saved image"
+                    "tooltip": "Optional text for the Note node embedded in the saved workflow. Takes priority over computed_prompt for the note only"
                 }),
                 "computed_prompt": ("*", {
                     "default": "",
-                    "tooltip": "The computed prompt from Gprompts Node to embed in saved image (use this OR notes)"
+                    "tooltip": "Prompt recorded in metadata/Immich (e.g. an enhanced caption). Also used as the note unless notes is wired"
                 })
             },
             "hidden": {
@@ -788,7 +789,7 @@ class GImageSaveImmich(SaveImage):
     def execute(self, image=None, filename_prefix="ComfyUI", album=None,tags="",save_also=True, notes=None, computed_prompt=None,unique_id=0, prompt = None,extra_pnginfo=None):
         global last_processed_result,last_processed_result_workflow_id,promtpForId,filename_counter
         filename_counter = filename_counter+1
-        workflow_id = extra_pnginfo.get("workflow",{}).get("id")
+        workflow_id = (extra_pnginfo or {}).get("workflow", {}).get("id")
         last_prompt = promtpForId.get(workflow_id)
         process_deletion_queue()
         # One consistent settings snapshot for this whole save. Fast path is
@@ -803,19 +804,15 @@ class GImageSaveImmich(SaveImage):
             extra_pnginfo_new = {}
         else:
             extra_pnginfo_new = extra_pnginfo.copy()
-        note_text = None
-        # Try in order notes,computed_prompt, global value of gprompt node
-        if notes:
-            note_text = notes
-        if not note_text and computed_prompt:
-            note_text = f'Image created with prompt "{computed_prompt}"'
-        if not note_text and last_prompt:
-            note_text = f'Image created with prompt "{last_prompt}"'
+        # Prompt recorded in metadata/Immich: wired input, else this run's
+        # GPrompts node (from the prompt graph), else the global last prompt.
+        resolved_prompt = computed_prompt or extract_computed_prompt(prompt) or last_prompt
+        # Note: wired notes win; otherwise built from the resolved prompt.
+        note_text = notes or None
+        if not note_text and resolved_prompt:
+            note_text = f'Image created with prompt "{resolved_prompt}"'
         if "computed_prompt" not in extra_pnginfo_new:
-            if computed_prompt:
-                extra_pnginfo_new["computed_prompt"] = computed_prompt
-            else:
-                extra_pnginfo_new["computed_prompt"] = last_prompt
+            extra_pnginfo_new["computed_prompt"] = resolved_prompt
         if not album:
             album = settings.get('immich_default_album')
         basetags = settings.get('immich_base_tags') or ""
@@ -832,10 +829,6 @@ class GImageSaveImmich(SaveImage):
             filename_prefix = datetime.now().strftime("%Y-%m-%d") + os.path.sep + filename_prefix
         imm_filename = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
         workflow = None
-
-        extracted_prompt = extract_computed_prompt(prompt)
-        #dprint(f">>>>>>>>>> last_prompt: {last_prompt}")
-        #dprint(f">>>>>>>>>> extracted_prompt: {extracted_prompt}")
 
         # Add note node to workflow
         if note_text and  "workflow" in extra_pnginfo_new:
@@ -1142,7 +1135,7 @@ class GPrompts(DynamicPromptEngine):
     def process_dynamic_prompt(self, text, seed=0, computed_prompt="",delimiter_style=None,unique_id=0,prompt=None,extra_pnginfo=None):
         global last_processed_result,last_processed_result_workflow_id,promtpForId
         dynamic_text = text
-        workflow_id = extra_pnginfo.get("workflow",{}).get("id")
+        workflow_id = (extra_pnginfo or {}).get("workflow", {}).get("id")
         if delimiter_style not in self.DELIM_STYLES:
             delimiter_style = self.DEFAULT_DELIM_STYLE
         self.delims = self.DELIM_STYLES[delimiter_style]

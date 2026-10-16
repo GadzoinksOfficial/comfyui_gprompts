@@ -106,28 +106,19 @@ class GSaveAudioToImmich(SaveAudioAdvanced):
 
 
         extra_pnginfo_new = dict(cls.hidden.extra_pnginfo or {})
-        workflow_id = extra_pnginfo.get("workflow",{}).get("id")
+        workflow_id = (extra_pnginfo or {}).get("workflow", {}).get("id")
         workflow = None
-        note_text = None
-        #TODO extracted_prompt = extract_computed_prompt(prompt)
-        #dprint(f">>>>>>>>>> last_prompt: {last_prompt}")
-        #dprint(f">>>>>>>>>> extracted_prompt: {extracted_prompt}")
 
         settings = get_immich_settings()
-        if  extra_pnginfo:
-            extra_pnginfo_new = extra_pnginfo.copy()
-        note_text = None
-        # Try in order notes,, global value of gprompt node
-        if notes:
-            note_text = notes
-        last_prompt = get_last_prompt(workflow_id)
-        if not note_text and last_prompt:
-            note_text = f'Created with prompt "{last_prompt}"'
-        # Same as the image save node: send the computed prompt to /gz/ingest.
-        if "computed_prompt" not in extra_pnginfo_new:
-            computed_prompt = resolve_computed_prompt(prompt, workflow_id)
-            if computed_prompt:
-                extra_pnginfo_new["computed_prompt"] = computed_prompt
+        # Same rule as the image save node: one resolved prompt (this run's
+        # graph, else per-workflow last prompt) feeds both the note and
+        # /gz/ingest; wired notes win the note.
+        computed_prompt = resolve_computed_prompt(prompt, workflow_id)
+        note_text = notes or None
+        if not note_text and computed_prompt:
+            note_text = f'Created with prompt "{computed_prompt}"'
+        if "computed_prompt" not in extra_pnginfo_new and computed_prompt:
+            extra_pnginfo_new["computed_prompt"] = computed_prompt
         if not album_name:
             album_name = settings.get('immich_default_album')
         # Add note node to workflow
@@ -258,30 +249,19 @@ class GSaveVideoToImmich(SaveVideo):
         prompt = cls.hidden.prompt
         extra_pnginfo=cls.hidden.extra_pnginfo
         extra_pnginfo_new = dict(cls.hidden.extra_pnginfo or {})
-        workflow_id = extra_pnginfo.get("workflow",{}).get("id")
+        workflow_id = (extra_pnginfo or {}).get("workflow", {}).get("id")
         workflow = None
-        note_text = None
-        #TODO extracted_prompt = extract_computed_prompt(prompt)
-        #dprint(f">>>>>>>>>> last_prompt: {last_prompt}")
-        #dprint(f">>>>>>>>>> extracted_prompt: {extracted_prompt}")
-
-
 
         settings = get_immich_settings()
-        if  extra_pnginfo:
-            extra_pnginfo_new = extra_pnginfo.copy()
-        note_text = None
-        # Try in order notes,, global value of gprompt node
-        if notes:
-            note_text = notes
-        last_prompt = get_last_prompt(workflow_id)
-        if not note_text and last_prompt:
-            note_text = f'Created with prompt "{last_prompt}"'
-        # Same as the image save node: send the computed prompt to /gz/ingest.
-        if "computed_prompt" not in extra_pnginfo_new:
-            computed_prompt = resolve_computed_prompt(prompt, workflow_id)
-            if computed_prompt:
-                extra_pnginfo_new["computed_prompt"] = computed_prompt
+        # Same rule as the image save node: one resolved prompt (this run's
+        # graph, else per-workflow last prompt) feeds both the note and
+        # /gz/ingest; wired notes win the note.
+        computed_prompt = resolve_computed_prompt(prompt, workflow_id)
+        note_text = notes or None
+        if not note_text and computed_prompt:
+            note_text = f'Created with prompt "{computed_prompt}"'
+        if "computed_prompt" not in extra_pnginfo_new and computed_prompt:
+            extra_pnginfo_new["computed_prompt"] = computed_prompt
         if not album_name:
             album_name = settings.get('immich_default_album')
 
@@ -292,7 +272,6 @@ class GSaveVideoToImmich(SaveVideo):
             workflow = add_note_to_pnginfo(extra_pnginfo_new, note_text)
 
 
-        #TODO last_prompt = promtpForId.get(workflow_id)
         dprint(f"unique_id:{unique_id} workflow_id:{workflow_id} prompt:{prompt} ")
         dprint(f"extra_pnginfo:{extra_pnginfo}")
         dprint(f"workflow:{workflow}")
