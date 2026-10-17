@@ -1,0 +1,1094 @@
+{
+  "id": "e2e0c6b6-aee3-4a86-98e9-f162541d01f5",
+  "revision": 0,
+  "last_node_id": 45,
+  "last_link_id": 81,
+  "nodes": [
+    {
+      "id": 19,
+      "type": "ResolutionSelector",
+      "pos": [
+        -462.0273842526706,
+        904.1325712032907
+      ],
+      "size": [
+        270,
+        150
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "showAdvanced": true,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "width",
+          "type": "INT",
+          "links": [
+            62
+          ]
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "links": [
+            63
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ResolutionSelector"
+      },
+      "widgets_values": [
+        "16:9 (Widescreen)",
+        1,
+        16
+      ],
+      "widgets_values_named": {
+        "aspect_ratio": "16:9 (Widescreen)",
+        "megapixels": 1,
+        "multiple": 16
+      }
+    },
+    {
+      "id": 25,
+      "type": "GImageSaveImmich",
+      "pos": [
+        1140.564839324525,
+        -1018.4785900117415
+      ],
+      "size": [
+        668.7412405360775,
+        546.1145865197087
+      ],
+      "flags": {},
+      "order": 16,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 59
+        },
+        {
+          "name": "notes",
+          "shape": 7,
+          "type": "*",
+          "link": 67
+        },
+        {
+          "name": "computed_prompt",
+          "shape": 7,
+          "type": "*",
+          "link": 79
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "GImageSaveImmich"
+      },
+      "widgets_values": [
+        "tikif3",
+        "tikif3",
+        "",
+        true
+      ],
+      "widgets_values_named": {
+        "filename_prefix": "tikif3",
+        "album": "tikif3",
+        "tags": "",
+        "save_also": true
+      }
+    },
+    {
+      "id": 30,
+      "type": "UNETLoader",
+      "pos": [
+        -5,
+        370
+      ],
+      "size": [
+        340,
+        90
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "slot_index": 0,
+          "links": [
+            50
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "UNETLoader",
+        "models": [
+          {
+            "name": "flux3_image_klein_int8_convrot.safetensors",
+            "url": "https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/diffusion_models/flux3_image_klein_int8_convrot.safetensors",
+            "directory": "diffusion_models"
+          }
+        ]
+      },
+      "widgets_values": [
+        "flux3_image_klein_int8_convrot.safetensors",
+        "default"
+      ],
+      "widgets_values_named": {
+        "unet_name": "flux3_image_klein_int8_convrot.safetensors",
+        "weight_dtype": "default"
+      },
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 31,
+      "type": "CLIPTextEncode",
+      "pos": [
+        395,
+        400
+      ],
+      "size": [
+        450,
+        460
+      ],
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 48
+        },
+        {
+          "name": "text",
+          "type": "STRING",
+          "widget": {
+            "name": "text"
+          },
+          "link": 49
+        }
+      ],
+      "outputs": [
+        {
+          "name": "CONDITIONING",
+          "type": "CONDITIONING",
+          "slot_index": 0,
+          "links": [
+            51
+          ]
+        }
+      ],
+      "title": "Positive Prompt",
+      "properties": {
+        "Node name for S&R": "CLIPTextEncode"
+      },
+      "widgets_values": [
+        "A close-up photograph of a red fox standing in fresh snow at sunrise. The fox faces the camera with alert ears and amber eyes, its thick orange fur dusted with snowflakes. Soft golden light comes from the left, the background is a blurred line of snow-covered pine trees, shallow depth of field."
+      ],
+      "widgets_values_named": {
+        "text": "A close-up photograph of a red fox standing in fresh snow at sunrise. The fox faces the camera with alert ears and amber eyes, its thick orange fur dusted with snowflakes. Soft golden light comes from the left, the background is a blurred line of snow-covered pine trees, shallow depth of field."
+      },
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 32,
+      "type": "CLIPLoader",
+      "pos": [
+        -5,
+        530
+      ],
+      "size": [
+        340,
+        110
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "slot_index": 0,
+          "links": [
+            48,
+            56
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CLIPLoader",
+        "models": [
+          {
+            "name": "qwen3vl_4b_int8_convrot.safetensors",
+            "url": "https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/text_encoders/qwen3vl_4b_int8_convrot.safetensors",
+            "directory": "text_encoders"
+          }
+        ]
+      },
+      "widgets_values": [
+        "qwen3vl_4b_int8_convrot.safetensors",
+        "flux3",
+        "default"
+      ],
+      "widgets_values_named": {
+        "clip_name": "qwen3vl_4b_int8_convrot.safetensors",
+        "type": "flux3",
+        "device": "default"
+      },
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 33,
+      "type": "KSampler",
+      "pos": [
+        905,
+        340
+      ],
+      "size": [
+        320,
+        480
+      ],
+      "flags": {},
+      "order": 14,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 50
+        },
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "link": 51
+        },
+        {
+          "name": "negative",
+          "type": "CONDITIONING",
+          "link": 52
+        },
+        {
+          "name": "latent_image",
+          "type": "LATENT",
+          "link": 60
+        }
+      ],
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "slot_index": 0,
+          "links": [
+            57
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "KSampler"
+      },
+      "widgets_values": [
+        71639852426444,
+        "randomize",
+        50,
+        3.5,
+        "euler",
+        "sgm_uniform",
+        1
+      ],
+      "widgets_values_named": {
+        "seed": 71639852426444,
+        "control_after_generate": "randomize",
+        "steps": 50,
+        "cfg": 3.5,
+        "sampler_name": "euler",
+        "scheduler": "sgm_uniform",
+        "denoise": 1
+      }
+    },
+    {
+      "id": 34,
+      "type": "VAELoader",
+      "pos": [
+        -5,
+        710
+      ],
+      "size": [
+        340,
+        60
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "slot_index": 0,
+          "links": [
+            58
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAELoader",
+        "models": [
+          {
+            "name": "flux2-vae.safetensors",
+            "url": "https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/vae/flux2-vae.safetensors",
+            "directory": "vae"
+          }
+        ]
+      },
+      "widgets_values": [
+        "flux2-vae.safetensors"
+      ],
+      "widgets_values_named": {
+        "vae_name": "flux2-vae.safetensors"
+      },
+      "color": "#323",
+      "bgcolor": "#535"
+    },
+    {
+      "id": 35,
+      "type": "PreviewAny",
+      "pos": [
+        -585.889681576519,
+        -194.159548285988
+      ],
+      "size": [
+        774.1642344139939,
+        457.79668196328043
+      ],
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "source",
+          "type": "*",
+          "link": 80
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            49
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PreviewAny"
+      },
+      "widgets_values": [],
+      "widgets_values_named": {}
+    },
+    {
+      "id": 37,
+      "type": "EmptyFlux2LatentImage",
+      "pos": [
+        25,
+        900
+      ],
+      "size": [
+        300,
+        110
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "width",
+          "type": "INT",
+          "widget": {
+            "name": "width"
+          },
+          "link": 62
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "widget": {
+            "name": "height"
+          },
+          "link": 63
+        }
+      ],
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "slot_index": 0,
+          "links": [
+            60
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "EmptyFlux2LatentImage"
+      },
+      "widgets_values": [
+        1024,
+        1024,
+        1
+      ],
+      "widgets_values_named": {
+        "width": 1024,
+        "height": 1024,
+        "batch_size": 1
+      },
+      "color": "#323",
+      "bgcolor": "#535"
+    },
+    {
+      "id": 38,
+      "type": "CLIPTextEncode",
+      "pos": [
+        395,
+        920
+      ],
+      "size": [
+        460,
+        110
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 56
+        }
+      ],
+      "outputs": [
+        {
+          "name": "CONDITIONING",
+          "type": "CONDITIONING",
+          "slot_index": 0,
+          "links": [
+            52
+          ]
+        }
+      ],
+      "title": "Negative Prompt (empty = reference default)",
+      "properties": {
+        "Node name for S&R": "CLIPTextEncode"
+      },
+      "widgets_values": [
+        ""
+      ],
+      "widgets_values_named": {
+        "text": ""
+      },
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 39,
+      "type": "VAEDecode",
+      "pos": [
+        1265,
+        340
+      ],
+      "size": [
+        210,
+        50
+      ],
+      "flags": {},
+      "order": 15,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 57
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 58
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "slot_index": 0,
+          "links": [
+            59
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAEDecode"
+      }
+    },
+    {
+      "id": 40,
+      "type": "StringFormatter",
+      "pos": [
+        452.2613989406914,
+        -306.74263221402987
+      ],
+      "size": [
+        636.5083761163569,
+        392.48810660987783
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "a",
+          "shape": 7,
+          "type": "*",
+          "link": 78
+        },
+        {
+          "name": "b",
+          "shape": 7,
+          "type": "*",
+          "link": 76
+        },
+        {
+          "name": "c",
+          "shape": 7,
+          "type": "*",
+          "link": null
+        },
+        {
+          "name": "d",
+          "shape": 7,
+          "type": "*",
+          "link": null
+        },
+        {
+          "name": "e",
+          "shape": 7,
+          "type": "*",
+          "link": null
+        },
+        {
+          "name": "f",
+          "shape": 7,
+          "type": "*",
+          "link": null
+        },
+        {
+          "name": "g",
+          "shape": 7,
+          "type": "*",
+          "link": null
+        },
+        {
+          "name": "h",
+          "shape": 7,
+          "type": "*",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "formatted_string",
+          "type": "STRING",
+          "links": [
+            67
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "StringFormatter"
+      },
+      "widgets_values": [
+        "The prompt is \n\n$a\n\nbase. \n$b\n\nthe seed is $b, width is $c, height is $d. Generated at $datetime on $hostname, Operating system $os\n"
+      ],
+      "widgets_values_named": {
+        "format_string": "The prompt is \n\n$a\n\nbase. \n$b\n\nthe seed is $b, width is $c, height is $d. Generated at $datetime on $hostname, Operating system $os\n"
+      }
+    },
+    {
+      "id": 41,
+      "type": "Note",
+      "pos": [
+        1874.8260349686327,
+        -1024.5866951678008
+      ],
+      "size": [
+        328.8755838951097,
+        180.87158589988871
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "You want a wire The output of generate text to a computed_prompt, so that it will be included in the embedded workflow and picked up by my branch of Immich. Otherwise you'll never see the enchanced prompt used."
+      ],
+      "widgets_values_named": {
+        "text": "You want a wire The output of generate text to a computed_prompt, so that it will be included in the embedded workflow and picked up by my branch of Immich. Otherwise you'll never see the enchanced prompt used."
+      },
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 42,
+      "type": "GPromptEnhancerLoaderGGUF",
+      "pos": [
+        -589.7353978907569,
+        -698.7147225752433
+      ],
+      "size": [
+        318.13046875,
+        370
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "enhancer",
+          "type": "GPROMPT_ENHANCER",
+          "links": [
+            81
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "GPromptEnhancerLoaderGGUF"
+      },
+      "widgets_values": [
+        "pe_t2i_heretic-Q6_K.gguf",
+        "flux3_t2i_system_prompt.txt",
+        16384,
+        8192,
+        -1,
+        1,
+        0.95,
+        20,
+        1.5,
+        true,
+        800,
+        true,
+        true,
+        false
+      ],
+      "widgets_values_named": {
+        "model": "pe_t2i_heretic-Q6_K.gguf",
+        "system_prompt": "flux3_t2i_system_prompt.txt",
+        "context_length": 16384,
+        "max_new_tokens": 8192,
+        "gpu_layers": -1,
+        "temperature": 1,
+        "top_p": 0.95,
+        "top_k": 20,
+        "presence_penalty": 1.5,
+        "enable_thinking": true,
+        "plan_tokens": 800,
+        "keep_loaded": true,
+        "flash_attn": true,
+        "second_try": false
+      }
+    },
+    {
+      "id": 43,
+      "type": "GPromptsEnhanced",
+      "pos": [
+        -59.966946529374084,
+        -1018.2700861343249
+      ],
+      "size": [
+        1059.3680338868717,
+        625.8036282742478
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "enhancer",
+          "type": "GPROMPT_ENHANCER",
+          "link": 81
+        },
+        {
+          "name": "images.image_1",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "links": [
+            77
+          ]
+        },
+        {
+          "name": "dynamic_prompt",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "name": "computed_prompt",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "links": []
+        },
+        {
+          "name": "template",
+          "type": "STRING",
+          "links": [
+            76
+          ]
+        },
+        {
+          "name": "wh_ratio",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "name": "width",
+          "type": "INT",
+          "links": []
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "links": []
+        },
+        {
+          "name": "resolution",
+          "type": "INT",
+          "links": []
+        },
+        {
+          "name": "ratio_follow",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "GPromptsEnhanced",
+        "_meta": {
+          "computed_result": "The image is a richly textured oil-painting-style portrait set in a dim, dramatic interior, combining warm Titian-like flesh tones, earthy chiaroscuro, and angular Picasso-like cubist geometry. The composition is dominated by a young adult Goth woman shown in close-up to half-length framing, positioned slightly left of center and turned in three-quarter profile toward the viewer. She has very pale, warm-toned skin with painterly highlights on her cheekbone, nose, lips, neck, collarbone, and shoulder. Her face is oval and softly modeled, with dark arched eyebrows, smoky black eye makeup, heavy eyeliner, shadowed under-eyes, deep rose-red lipstick, and a calm, distant, brooding expression. Her dark black-brown curly hair is loosely gathered around the back of her head, with wisps crossing her forehead and cheek. She wears dangling earrings with small metallic beads and elongated dark oval pendants, along with layered necklaces and an ornate pendant resting over her bare upper chest. Her clothing is dark, almost black or deep charcoal, with a high collar, ruffled trim, puffed sleeve details, lace-like edging, and textured fabric rendered in thick brushstrokes. The garment’s folds merge into the surrounding shadows while subtle brown highlights reveal its structure. Behind her on the left side, within a classical alcove or columned architectural space, a nude female figure is painted in a muted Renaissance-inspired style. This background figure is shown from behind or turned away, with pale flesh tones and softly illuminated back, shoulder, hip, and leg forms. She stands partly obscured by shadow and the darker vertical architecture, appearing smaller and more distant than the main subject. The leftmost wall contains warm tan, ochre, umber, and deep brown patches with visible craquelure and heavy brush texture, suggesting aged canvas or an old master painting surface. Near the center-right and far-right background, angular geometric panels in muted brown, ochre, teal, and black form a cubist architectural backdrop. These faceted shapes create sharp triangular and polygonal planes behind the woman’s head and shoulder, contrasting with the softer anatomical modeling of her face and body. In the right background, an oval mirror or framed reflective object appears in dark warm tones with a decorative curved frame, set against the geometric wall. Below it, a small pale vase-like object rests on a shelf or surface amid shadowy interior forms. The entire image has a low-key, theatrical atmosphere with warm golden-brown illumination concentrated on the foreground woman’s skin and face, while the edges dissolve into dark olive, umber, teal, and black shadows. The surface shows pronounced oil-paint texture, craquelure, layered brushwork, and aged varnish effects, making the work feel like a historical portrait transformed through modernist cubist abstraction.",
+          "computed_prompt": "The image is a richly textured oil-painting-style portrait set in a dim, dramatic interior, combining warm Titian-like flesh tones, earthy chiaroscuro, and angular Picasso-like cubist geometry. The composition is dominated by a young adult Goth woman shown in close-up to half-length framing, positioned slightly left of center and turned in three-quarter profile toward the viewer. She has very pale, warm-toned skin with painterly highlights on her cheekbone, nose, lips, neck, collarbone, and shoulder. Her face is oval and softly modeled, with dark arched eyebrows, smoky black eye makeup, heavy eyeliner, shadowed under-eyes, deep rose-red lipstick, and a calm, distant, brooding expression. Her dark black-brown curly hair is loosely gathered around the back of her head, with wisps crossing her forehead and cheek. She wears dangling earrings with small metallic beads and elongated dark oval pendants, along with layered necklaces and an ornate pendant resting over her bare upper chest. Her clothing is dark, almost black or deep charcoal, with a high collar, ruffled trim, puffed sleeve details, lace-like edging, and textured fabric rendered in thick brushstrokes. The garment’s folds merge into the surrounding shadows while subtle brown highlights reveal its structure. Behind her on the left side, within a classical alcove or columned architectural space, a nude female figure is painted in a muted Renaissance-inspired style. This background figure is shown from behind or turned away, with pale flesh tones and softly illuminated back, shoulder, hip, and leg forms. She stands partly obscured by shadow and the darker vertical architecture, appearing smaller and more distant than the main subject. The leftmost wall contains warm tan, ochre, umber, and deep brown patches with visible craquelure and heavy brush texture, suggesting aged canvas or an old master painting surface. Near the center-right and far-right background, angular geometric panels in muted brown, ochre, teal, and black form a cubist architectural backdrop. These faceted shapes create sharp triangular and polygonal planes behind the woman’s head and shoulder, contrasting with the softer anatomical modeling of her face and body. In the right background, an oval mirror or framed reflective object appears in dark warm tones with a decorative curved frame, set against the geometric wall. Below it, a small pale vase-like object rests on a shelf or surface amid shadowy interior forms. The entire image has a low-key, theatrical atmosphere with warm golden-brown illumination concentrated on the foreground woman’s skin and face, while the edges dissolve into dark olive, umber, teal, and black shadows. The surface shows pronounced oil-paint texture, craquelure, layered brushwork, and aged varnish effects, making the work feel like a historical portrait transformed through modernist cubist abstraction."
+        }
+      },
+      "widgets_values": [
+        " in the style of {{  Dali mixed with Monet | titian mixed with Picasso  }} a  painting of a 24 year old Goth woman ",
+        "",
+        "curly { }",
+        44078148403159,
+        "randomize",
+        true,
+        "2.0",
+        "every run",
+        "off"
+      ],
+      "widgets_values_named": {
+        "text": " in the style of {{  Dali mixed with Monet | titian mixed with Picasso  }} a  painting of a 24 year old Goth woman ",
+        "trigger_words": "",
+        "delimiter_style": "curly { }",
+        "seed": 44078148403159,
+        "control_after_generate": "randomize",
+        "preserve_dynamic_words": true,
+        "target_megapixels": "2.0",
+        "enhance": "every run",
+        "prefetch_next": "off"
+      }
+    },
+    {
+      "id": 44,
+      "type": "Reroute",
+      "pos": [
+        268.8627708731322,
+        -796.9712593009737
+      ],
+      "size": [
+        75,
+        26
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "",
+          "type": "*",
+          "link": 77
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "STRING",
+          "links": [
+            78,
+            79,
+            80
+          ]
+        }
+      ],
+      "properties": {
+        "showOutputText": false,
+        "horizontal": false
+      }
+    },
+    {
+      "id": 45,
+      "type": "Note",
+      "pos": [
+        -558.460140553421,
+        -1019.6787053503695
+      ],
+      "size": [
+        328.8755838951097,
+        180.87158589988871
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "This workflow is a modified version of the sample flux 3 workflow, the major difference it is it is using my prompt enhancer instead of generate text.\n\n"
+      ],
+      "widgets_values_named": {
+        "text": "This workflow is a modified version of the sample flux 3 workflow, the major difference it is it is using my prompt enhancer instead of generate text.\n\n"
+      },
+      "color": "#223",
+      "bgcolor": "#335"
+    }
+  ],
+  "links": [
+    [
+      48,
+      32,
+      0,
+      31,
+      0,
+      "CLIP"
+    ],
+    [
+      49,
+      35,
+      0,
+      31,
+      1,
+      "STRING"
+    ],
+    [
+      50,
+      30,
+      0,
+      33,
+      0,
+      "MODEL"
+    ],
+    [
+      51,
+      31,
+      0,
+      33,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      52,
+      38,
+      0,
+      33,
+      2,
+      "CONDITIONING"
+    ],
+    [
+      56,
+      32,
+      0,
+      38,
+      0,
+      "CLIP"
+    ],
+    [
+      57,
+      33,
+      0,
+      39,
+      0,
+      "LATENT"
+    ],
+    [
+      58,
+      34,
+      0,
+      39,
+      1,
+      "VAE"
+    ],
+    [
+      59,
+      39,
+      0,
+      25,
+      0,
+      "IMAGE"
+    ],
+    [
+      60,
+      37,
+      0,
+      33,
+      3,
+      "LATENT"
+    ],
+    [
+      62,
+      19,
+      0,
+      37,
+      0,
+      "INT"
+    ],
+    [
+      63,
+      19,
+      1,
+      37,
+      1,
+      "INT"
+    ],
+    [
+      67,
+      40,
+      0,
+      25,
+      1,
+      "STRING"
+    ],
+    [
+      76,
+      43,
+      4,
+      40,
+      1,
+      "STRING"
+    ],
+    [
+      77,
+      43,
+      0,
+      44,
+      0,
+      "STRING"
+    ],
+    [
+      78,
+      44,
+      0,
+      40,
+      0,
+      "STRING"
+    ],
+    [
+      79,
+      44,
+      0,
+      25,
+      2,
+      "STRING"
+    ],
+    [
+      80,
+      44,
+      0,
+      35,
+      0,
+      "STRING"
+    ],
+    [
+      81,
+      42,
+      0,
+      43,
+      0,
+      "GPROMPT_ENHANCER"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 5,
+      "title": "Models",
+      "bounding": [
+        -15,
+        300,
+        360,
+        482
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    },
+    {
+      "id": 6,
+      "title": "Prompt",
+      "bounding": [
+        375,
+        300,
+        490,
+        750
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    },
+    {
+      "id": 7,
+      "title": "Image Size",
+      "bounding": [
+        -15,
+        800,
+        360,
+        250
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    }
+  ],
+  "config": {},
+  "extra": {
+    "frontendVersion": "1.55.17",
+    "ds": {
+      "scale": 0.8239204580003547,
+      "offset": [
+        226.76338998108372,
+        1055.1336572566024
+      ]
+    },
+    "VHS_latentpreview": false,
+    "VHS_latentpreviewrate": 0,
+    "VHS_MetadataImage": true,
+    "VHS_KeepIntermediate": true
+  },
+  "version": 0.4
+}

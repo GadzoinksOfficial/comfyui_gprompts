@@ -571,8 +571,9 @@ class LoadImagesBatch:
             self._incremental_counter[counter_key] = (selected_index + 1) % len(image_paths)
             image_path = image_paths[selected_index]
         else:  # random mode
-            random.seed(seed)
-            selected_index = int(random.random() * len(image_paths))
+            # Local RNG: same index as before, but doesn't reseed the global
+            # `random` module out from under other nodes.
+            selected_index = int(random.Random(seed).random() * len(image_paths))
             image_path = image_paths[selected_index]
 
         # Load the image
@@ -1146,9 +1147,10 @@ class GPrompts(DynamicPromptEngine):
             self.current_iteration = 0
             self.sequential_combinations = []
         
-        # Set the random seed for reproducibility
+        # Seed this node's private RNG for reproducibility. seed=0 keeps the
+        # RNG's own unseeded stream, untouched by other nodes.
         if seed > 0:
-            random.seed(seed + self.current_iteration)
+            self.rng.seed(seed + self.current_iteration)
         
         # Process the prompt with dynamic elements
         processed_text = self.parse_dynamic_prompt(text)

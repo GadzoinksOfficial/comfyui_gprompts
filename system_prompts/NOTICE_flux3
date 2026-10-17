@@ -1,0 +1,14 @@
+flux3_t2i_system_prompt.txt is adapted from the "t2i" system prompt of Black Forest Labs' FLUX 3
+Image Klein Prompt Upsampler (system_prompts.json in
+https://huggingface.co/black-forest-labs/flux-3-image-klein-pup), Copyright Black Forest Labs,
+licensed under the Apache License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0; a copy
+is in LICENSE-Apache-2.0.txt in this folder).
+
+Changes in this copy: the answer is a JSON object with "rewritten_prompt" and "wh_ratio" instead of
+the bare caption, with rules for escaping quoted text and line breaks inside it; when the request
+gives no "TARGET CANVAS" line or ratio, the model chooses the aspect ratio from a fixed list; a rule
+for the node's keep-words note was added; and an "Art requests" section was added for requests that
+name an artist, art style or non-photographic medium. The rest of the wording is unchanged.
+
+FLUX and Black Forest Labs are trademarks of Black Forest Labs. This pack is not affiliated with or
+endorsed by Black Forest Labs.

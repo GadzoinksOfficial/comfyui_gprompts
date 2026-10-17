@@ -519,6 +519,21 @@ adapted to this node.
   squeezed into their boxes, check that the latent has the caption's aspect ratio.
 - The Ideogram 4 weights are under a non-commercial licence (the magic prompt itself is Apache 2.0).
 
+### Third-party system prompts
+Two system prompts in `system_prompts/` are adapted from other projects' open-source prompts. They
+are under the Apache License 2.0, not this pack's MIT licence. A copy of the Apache licence is in
+`system_prompts/LICENSE-Apache-2.0.txt`, and each prompt has a NOTICE file in the same folder
+saying where it comes from and what was changed.
+
+| System prompt | Adapted from | Notice |
+|---|---|---|
+| `ideogram4_system_prompt.txt` | Ideogram's open-source magic prompt ([ideogram-oss/ideogram4](https://github.com/ideogram-oss/ideogram4)) | `NOTICE_ideogram4` |
+| `flux3_t2i_system_prompt.txt` | Black Forest Labs' FLUX 3 Image Klein prompt upsampler ([black-forest-labs/flux-3-image-klein-pup](https://huggingface.co/black-forest-labs/flux-3-image-klein-pup)) | `NOTICE_flux3` |
+
+If you copy one of these prompts elsewhere, keep its NOTICE file and the licence with it.
+FLUX and Black Forest Labs are trademarks of Black Forest Labs, and Ideogram is a trademark of
+Ideogram; this pack is not affiliated with or endorsed by either.
+
 ### Warnings
 - **every run costs one LLM call per image.** With thinking on, that can take longer than the image
   itself; use `prefetch_next` (API or CPU), a lower `plan_tokens`, or thinking off. On a paid API,

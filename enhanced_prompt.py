@@ -1798,17 +1798,17 @@ class GPromptsEnhanced(io.ComfyNode):
 
     @staticmethod
     def _start_prefetch(engine, text, seed, enhancer, refs):
-        """Expand the next run now (without disturbing Python's random state) and
+        """Expand the next run now (without disturbing the engine's random state) and
         start its rewrite on a worker thread."""
         iteration = engine.current_iteration
-        saved = random.getstate()
+        saved = engine.rng.getstate()
         try:
             if seed > 0:
-                random.seed(seed + iteration)
+                engine.rng.seed(seed + iteration)
             expanded = engine.parse_dynamic_prompt(text)
             values = list(engine.last_values)
         finally:
-            random.setstate(saved)
+            engine.rng.setstate(saved)
         llm_seed = seed + iteration if seed > 0 else seed
         refs = list(refs)
         if refs:
@@ -1858,7 +1858,7 @@ class GPromptsEnhanced(io.ComfyNode):
             expanded, values = pf.expanded, list(pf.values)
         else:
             if seed > 0:
-                random.seed(seed + iteration)
+                engine.rng.seed(seed + iteration)
             expanded = engine.parse_dynamic_prompt(text)
             values = list(engine.last_values)
         if pf is not None and (pf.iteration != iteration or pf.expanded != expanded

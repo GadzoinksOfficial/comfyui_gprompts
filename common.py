@@ -212,6 +212,11 @@ class DynamicPromptEngine:
         self.previous_text = None
         self.previous_delim_style = None
         self.current_iteration = 0
+        # Private RNG for random-block picks. Never use the global `random`
+        # module here: other nodes call random.seed() on it, which made
+        # unseeded (seed=0) prompts repeat the same pick run after run.
+        # random.Random() self-seeds from os.urandom.
+        self.rng = random.Random()
         self.wildcard_cache = {}
         self.sequential_combinations = []
         # Parallel to sequential_combinations: the value chosen for each
@@ -533,9 +538,9 @@ class DynamicPromptEngine:
                     # Weighted selection - separate keys and weights
                     ks = list(wildcard_options.keys())
                     vs = list(wildcard_options.values())
-                    value = random.choices(ks, weights=vs, k=1)[0]
+                    value = self.rng.choices(ks, weights=vs, k=1)[0]
                 else:
-                    value = random.choice(wildcard_options)
+                    value = self.rng.choice(wildcard_options)
             else:
                 # In strict mode (angle delimiters), only pipe-separated
                 # content counts as a block; anything else is left untouched.
@@ -553,7 +558,7 @@ class DynamicPromptEngine:
                 if not options:
                     value = ""
                 else:
-                    value = random.choice(options)
+                    value = self.rng.choice(options)
 
             if kind == 'def':
                 registers[reg] = value
