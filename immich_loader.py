@@ -6,14 +6,12 @@ The images are listed and downloaded on the ComfyUI server, with the Immich
 address and API key from Settings > Gadzoinks (the same ones the save nodes use).
 """
 import asyncio
-import io
 import json
 import re
 import time
 
 import numpy as np
 import torch
-from PIL import Image, ImageOps
 
 from aiohttp import web
 from comfy_api.latest import io as cio
@@ -22,6 +20,8 @@ from server import PromptServer
 from .common import get_logger
 from .comfyui_gprompts import get_immich_settings, get_missing, masked_settings
 from .immich_importer import ImmichImporter, ImmichError
+from .image_fit import (ASPECT_OPTIONS, ASPECT_TOOLTIP, MAX_MEGAPIXELS_TOOLTIP,
+                        fit_image, open_image)
 
 log = get_logger("immich.loader")
 
@@ -311,17 +311,9 @@ def read_prompt(info, img=None):
 # ----------------------------------------------------------------------------
 # Images
 # ----------------------------------------------------------------------------
-def decode_image(data):
-    img = Image.open(io.BytesIO(data))
-    img.load()
-    return img
-
-
 def to_tensors(img):
-    """(IMAGE [1,H,W,3], MASK [1,H,W]) the way Load Image makes them."""
-    if getattr(img, "n_frames", 1) > 1:
-        img.seek(0)
-    img = ImageOps.exif_transpose(img)
+    """(IMAGE [1,H,W,3], MASK [1,H,W]) the way Load Image makes them, from an
+    image fit_image already oriented, cropped and scaled."""
     if img.mode == "I":
         img = img.point(lambda i: i * (1 / 255))
     rgb = img.convert("RGB")
@@ -334,23 +326,32 @@ def to_tensors(img):
     return image, mask.unsqueeze(0), rgb.width, rgb.height
 
 
-def load_asset(importer, asset):
-    """(PIL image, metadata info dict, which file was used). The original when
-    Pillow can read it; Immich's preview JPEG for RAW, or HEIC without pillow-heif."""
+def _decode(data, max_megapixels, aspect):
+    """(fitted image, source image, fit info). The source keeps its metadata
+    (PNG text chunks, EXIF) for read_prompt; JPEGs decode at reduced scale."""
+    src = open_image(data)
+    out, fit = fit_image(src, max_megapixels, aspect)
+    return out, src, fit
+
+
+def load_asset(importer, asset, max_megapixels=0.0, aspect="free"):
+    """(fitted image, source image, metadata info dict, which file was used,
+    fit info). The original when Pillow can read it; Immich's preview JPEG for
+    RAW, or HEIC without pillow-heif."""
     name = asset.get("originalFileName") or asset.get("id")
     mime = str(asset.get("originalMimeType") or "")
     if not _RAW_MIME.match(mime):
         data = importer.download_original(asset["id"])
         try:
-            img = decode_image(data)
-            return img, dict(img.info), "original"
+            out, src, fit = _decode(data, max_megapixels, aspect)
+            return out, src, dict(src.info), "original", fit
         except Exception as e:
             hint = (" (install pillow-heif in ComfyUI's Python to read HEIC originals)"
                     if re.search(r"hei[cf]", mime + name, re.IGNORECASE) and not HEIF_SUPPORT else "")
             log.warning(f"Load From Immich: can't decode the original {name}: {e}{hint}; "
                         f"using Immich's preview instead.")
-    img = decode_image(importer.download_preview(asset["id"]))
-    return img, {}, "preview"
+    out, src, fit = _decode(importer.download_preview(asset["id"]), max_megapixels, aspect)
+    return out, src, {}, "preview", fit
 
 
 # ----------------------------------------------------------------------------
@@ -388,6 +389,10 @@ class GLoadImageFromImmich(cio.ComfyNode):
                               tooltip="Which image, oldest first (wraps around). With 'increment', "
                                       "each queued run loads the next one; queue 'count' runs to do "
                                       "them all. At 0 the list is read again from Immich."),
+                cio.Float.Input("max_megapixels", default=0.0, min=0.0, max=64.0, step=0.1,
+                                tooltip=MAX_MEGAPIXELS_TOOLTIP),
+                cio.Combo.Input("aspect", options=ASPECT_OPTIONS, default="free",
+                                tooltip=ASPECT_TOOLTIP),
             ],
             outputs=[
                 cio.Image.Output("image", display_name="image"),
@@ -398,7 +403,9 @@ class GLoadImageFromImmich(cio.ComfyNode):
                 cio.String.Output("description", display_name="description",
                                   tooltip="The description in Immich."),
                 cio.String.Output("filename", display_name="filename"),
-                cio.Int.Output("width", display_name="width"),
+                cio.Int.Output("width", display_name="width",
+                               tooltip="Width of the output image, after any crop and scaling. "
+                                       "The original size is in metadata."),
                 cio.Int.Output("height", display_name="height"),
                 cio.Int.Output("index", display_name="index",
                                tooltip="The index actually used (after wrapping)."),
@@ -419,7 +426,8 @@ class GLoadImageFromImmich(cio.ComfyNode):
         return True
 
     @classmethod
-    def execute(cls, album, tag, favorites_only, min_rating, index) -> cio.NodeOutput:
+    def execute(cls, album, tag, favorites_only, min_rating, index, max_megapixels=0.0,
+                aspect="free") -> cio.NodeOutput:
         settings = get_immich_settings()
         missing = get_missing(settings)
         if missing:
@@ -439,11 +447,11 @@ class GLoadImageFromImmich(cio.ComfyNode):
                 raise ValueError(f"Load From Immich: no images match {label}.")
             used = index % len(assets)
             asset = assets[used]
-            img, info, used_file = load_asset(importer, asset)
+            img, src, info, used_file, fit = load_asset(importer, asset, max_megapixels, aspect)
         except ImmichError as e:
             raise ValueError(f"Load From Immich: {e}") from e
 
-        found = read_prompt(info, img)
+        found = read_prompt(info, src)
         image, mask, width, height = to_tensors(img)
         exif = asset.get("exifInfo") or {}
         filename = asset.get("originalFileName") or asset["id"]
@@ -460,11 +468,17 @@ class GLoadImageFromImmich(cio.ComfyNode):
             "favorite": bool(asset.get("isFavorite")),
             "rating": _rating(asset) or None,
             "loaded": used_file,
+            "original_width": fit["original_width"],
+            "original_height": fit["original_height"],
+            "cropped": fit["cropped"],
+            "scaled": fit["scaled"],
             "prompt_source": found["source"] or None,
         }
         if found["parameters"]:
             meta["parameters"] = found["parameters"]
-        log.info(f"Load From Immich: {label}: {used + 1}/{len(assets)} {filename}"
+        resized = (f", {fit['original_width']}x{fit['original_height']} -> {width}x{height}"
+                   if fit["cropped"] or fit["scaled"] else "")
+        log.info(f"Load From Immich: {label}: {used + 1}/{len(assets)} {filename}{resized}"
                  + (f", prompt from {found['source']}" if found["source"] else ", no prompt in the file"))
         return cio.NodeOutput(image, mask, found["prompt"], found["negative_prompt"],
                               meta["description"], filename, width, height, used, len(assets),

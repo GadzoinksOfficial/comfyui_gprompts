@@ -688,12 +688,24 @@ Supported file types: png, jpg, jpeg, bmp, tiff, webp. Files are sorted by path,
 - **allow_RGBA_output**: if `false`, images with transparency are converted to RGB.
 - **filename_text_extension**: if `true`, the `filename_text` output includes the file extension.
 - **load_exif**: if `true`, reads metadata from the image so the `prompt` output can be filled in.
+- **max_megapixels**: downscale so the image is at most this many megapixels, keeping its shape. `0` = off. Images are never upscaled. See *Image size* below.
+- **aspect**: center-crop to this width:height ratio (`16:9`, `9:16`, `1:1`, ...) before scaling. `free` keeps the whole image.
 
 ## Outputs
 - **image**: the loaded image.
 - **filename_text**: the file name.
-- **width** / **height**: image size in pixels.
+- **width** / **height**: size of the output image in pixels, after any crop and scaling.
 - **prompt**: the computed prompt stored in the image, or empty if there isn't one.
+
+## Image size
+*Load Images From Folder* and *Load Image From Immich* share the same two settings. The crop comes
+first, so `max_megapixels` applies to the part you keep. JPEGs are decoded directly at reduced
+scale, so a 48 MP photo loaded at 2 MP is fast and never takes 48 MP of memory. Most image and
+video models want 1-2 MP; anything much bigger only slows down the VAE.
+
+Images over 64 MP are always scaled down to 64 MP, even with `max_megapixels` at 0, and the log
+says so: one huge panorama or scan won't stop a batch. Files up to 1024 MP can be opened (Pillow
+alone refuses anything over about 179 MP).
 
 ---
 
@@ -782,9 +794,13 @@ case-sensitive; one that isn't found gives an error listing the albums or tags t
   `increment` and queue as many runs as the `count` output says. Videos are skipped.
 - The list is read from Immich when the index is 0 and kept for the rest of the batch, so photos
   added to the album mid-batch don't shift the numbering. They are picked up at the next run from 0.
+- **max_megapixels**, **aspect**: scale and center-crop each image, as in *Load Images From Folder*
+  (see *Image size* there). Phone originals are 12-48 MP, so `max_megapixels` 1-2 is a good
+  setting for a batch.
 
 **Outputs**
-- `image`, `mask` (from transparency, as Load Image makes it), `width`, `height`.
+- `image`, `mask` (from transparency, as Load Image makes it), `width`, `height` (after any crop
+  and scaling; the original size is in `metadata`).
 - `prompt`, `negative_prompt`: read from the original file. In order: the prompt the Gadzoinks save
   nodes store (`computed_prompt`, trigger words and LLM rewrite included), the prompt traced
   through the ComfyUI workflow in the file (through the sampler's positive and negative inputs),
@@ -792,7 +808,8 @@ case-sensitive; one that isn't found gives an error listing the albums or tags t
 - `description`: the description in Immich. For camera photos this is often the useful text; wire
   it into Dynamic Prompts with Enhancer to describe each photo.
 - `filename`, `asset_id`, `index`, `count` (how many images match), and `metadata` (JSON: the
-  filters, date taken, people, tags, favorite, rating, and where the prompt came from).
+  filters, date taken, people, tags, favorite, rating, where the prompt came from, the original
+  width and height, and whether the image was cropped or scaled).
 
 **File formats**: the original is downloaded. HEIC photos need `pillow-heif` in ComfyUI's Python
 (`python -m pip install pillow-heif`); without it, and for camera RAW files, the node uses Immich's

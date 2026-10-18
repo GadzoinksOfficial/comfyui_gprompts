@@ -43,6 +43,8 @@ import json
 import threading
 from .immich_importer import ImmichImporter
 from .common import dprint, DynamicPromptEngine, get_logger, set_debug
+from .image_fit import (ASPECT_OPTIONS, ASPECT_TOOLTIP, MAX_MEGAPIXELS_TOOLTIP,
+                        fit_image, open_image)
 
 log = get_logger("settings")
 
@@ -522,6 +524,9 @@ class LoadImagesBatch:
             "optional": {
                 "filename_text_extension": (["true", "false"],),
                 "load_exif": (["true", "false"],),  # New option to enable/disable EXIF loading
+                "max_megapixels": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 64.0, "step": 0.1,
+                                             "tooltip": MAX_MEGAPIXELS_TOOLTIP}),
+                "aspect": (ASPECT_OPTIONS, {"default": "free", "tooltip": ASPECT_TOOLTIP}),
             }
         }
 
@@ -534,7 +539,8 @@ class LoadImagesBatch:
 
     def load_batch_images(self, path, pattern='*', index=0, mode="single_image", 
                          seed=0, allow_RGBA_output='false', 
-                         filename_text_extension='true', load_exif='true'):
+                         filename_text_extension='true', load_exif='true',
+                         max_megapixels=0.0, aspect="free"):
         
         allow_RGBA = (allow_RGBA_output == 'true')
         load_exif_data = (load_exif == 'true')
@@ -578,17 +584,21 @@ class LoadImagesBatch:
 
         # Load the image
         try:
-            image = Image.open(image_path)
-            image = ImageOps.exif_transpose(image)  # Apply orientation from EXIF
-            
-            # Get dimensions
+            source = open_image(image_path)
+            # Orient, center-crop to `aspect` and scale to `max_megapixels`
+            # (JPEGs decode at reduced scale); width/height are the output's.
+            image, fit = fit_image(source, max_megapixels, aspect)
             width, height = image.size
-            
-            # Extract EXIF data if requested
+            if fit["cropped"] or fit["scaled"]:
+                dprint(f"Load images from folder: {os.path.basename(image_path)} "
+                       f"{fit['original_width']}x{fit['original_height']} -> {width}x{height}")
+
+            # Extract EXIF data if requested (from the file as stored: the
+            # fitted copy has no metadata)
             exif_data = {}
             exif_string = None
             if load_exif_data:
-                exif_data, exif_string = extract_exif(image)
+                exif_data, exif_string = extract_exif(source)
                 dprint(f"Loaded exif:\n{exif_data}")
 
             exif_prompt = exif_data.get("computed_prompt","")
