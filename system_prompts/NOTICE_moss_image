@@ -1,0 +1,39 @@
+moss_image_t2i_system_prompt.txt is adapted from the prompt-upsampler system prompt in Comfy Org's
+MOSS-Image text-to-image workflow templates (templates/image_moss_image_t2i.json in
+https://github.com/Comfy-Org/workflow_templates), which Comfy Org wrote from OpenMOSS's
+MOSS-Image Prompt Enhancer skill (https://github.com/OpenMOSS/MOSS-Image, Apache License 2.0).
+
+The workflow templates are licensed under the MIT License:
+
+  MIT License
+
+  Copyright (c) 2023-present Comfy Org
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to deal
+  in the Software without restriction, including without limitation the rights
+  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in all
+  copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  SOFTWARE.
+
+Changes in this copy: input may be in any language, not only Chinese; the answer is a JSON object
+with "rewritten_prompt" and "wh_ratio" instead of the bare caption, with rules for escaping quoted
+text and line breaks inside it; the model chooses the aspect ratio from a fixed list when the
+request gives none; rules were added for the node's keep-words note, explicit line breaks in
+multi-line text, and requests naming an artist or art medium; the text rules ask for alignment,
+spacing and reading order, and the length targets were lowered to match the long-caption lengths
+in the MOSS-Image technical report (arXiv 2610.23374, Table 7); a rule keeps watermarks, borders
+and image defects out of captions, since the model was trained on captions that describe them;
+the reference-image and bounding-box sections were removed (this prompt is for text-to-image
+without layout boxes). The rest of the wording is unchanged.
