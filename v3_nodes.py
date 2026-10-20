@@ -11,7 +11,7 @@ from PIL import Image as PILImage, ImageDraw, ImageFont
 from comfy_api.latest import io
 from comfy_extras.nodes_video import SaveVideo
 from comfy_extras.nodes_audio import SaveAudioAdvanced
-from .immich_importer import ImmichImporter
+from .immich_importer import ImmichImporter, json_safe
 from .comfyui_gprompts import get_last_prompt,parse_bool_setting,add_note_node_to_workflow,extract_computed_prompt,get_missing,get_immich_settings,get_settings_file,apply_settings,dprint,masked_settings,add_note_to_pnginfo
 from .common import get_logger
 
@@ -129,7 +129,10 @@ class GSaveAudioToImmich(SaveAudioAdvanced):
         dprint(f"workflow:{workflow}")
         dprint(f"note_text: {note_text}")
 # Let core SaveVideo do the encoding/metadata/counter work.
-        cls.hidden.extra_pnginfo = extra_pnginfo_new
+        # json_safe: drop ComfyUI's is_changed (often NaN, invalid JSON) from the
+        # metadata core writes into the file; works on copies
+        cls.hidden.extra_pnginfo = json_safe(extra_pnginfo_new)
+        cls.hidden.prompt = json_safe(prompt)
         result = super().execute(audio=audio, filename_prefix=filename_prefix,
                                  format={"format": "mp3", "quality": "V0"})
         dprint(f"result:{result}")
@@ -277,7 +280,10 @@ class GSaveVideoToImmich(SaveVideo):
         dprint(f"workflow:{workflow}")
         dprint(f"note_text: {note_text}")
 # Let core SaveVideo do the encoding/metadata/counter work.
-        cls.hidden.extra_pnginfo = extra_pnginfo_new
+        # json_safe: drop ComfyUI's is_changed (often NaN, invalid JSON) from the
+        # metadata core writes into the file; works on copies
+        cls.hidden.extra_pnginfo = json_safe(extra_pnginfo_new)
+        cls.hidden.prompt = json_safe(prompt)
         result = super().execute(video=video, filename_prefix=filename_prefix,
                                  format=format, codec=codec)
 

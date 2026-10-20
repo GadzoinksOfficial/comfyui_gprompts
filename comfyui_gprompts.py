@@ -41,7 +41,7 @@ from PIL import Image
 from PIL.ExifTags import TAGS
 import json
 import threading
-from .immich_importer import ImmichImporter
+from .immich_importer import ImmichImporter, json_safe
 from .common import dprint, DynamicPromptEngine, get_logger, set_debug
 from .image_fit import (ASPECT_OPTIONS, ASPECT_TOOLTIP, MAX_MEGAPIXELS_TOOLTIP,
                         fit_image, open_image)
@@ -718,7 +718,9 @@ class GImageSaveWithExtraMetadata(SaveImage):
             workflow = add_note_to_pnginfo(extra_pnginfo_new, note_text)
 
         # Save image
-        saved = super().save_images(image, filename_prefix, prompt, extra_pnginfo_new)
+        # json_safe: drop ComfyUI's is_changed (often NaN, invalid JSON) from the
+        # copy embedded in the file; ComfyUI's own prompt dict is not touched
+        saved = super().save_images(image, filename_prefix, json_safe(prompt), json_safe(extra_pnginfo_new))
         return saved
 
 
@@ -848,7 +850,9 @@ class GImageSaveImmich(SaveImage):
         # Save image (always use save_images() to create EXIF and workflow data)
         #dprint(f"extra_pnginfo_new:\n:{extra_pnginfo_new}")
         dprint(f"filename_prefix:{filename_prefix}")
-        saved = super().save_images(image, filename_prefix, prompt, extra_pnginfo_new)
+        # json_safe: drop ComfyUI's is_changed (often NaN, invalid JSON) from the
+        # copy embedded in the file; ComfyUI's own prompt dict is not touched
+        saved = super().save_images(image, filename_prefix, json_safe(prompt), json_safe(extra_pnginfo_new))
         #saved:{'ui': {'images': [{'filename': 'itest_00001_.png', 'subfolder': '2026-02-21', 'type': 'output'}]}}
         rc = saved
 
