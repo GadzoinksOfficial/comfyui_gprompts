@@ -56,7 +56,7 @@ from .enhanced_prompt import (
     TASK_T2I, TASK_EDIT, LLM_IMAGE_MEGAPIXELS, DEFAULT_LLM_IMAGE_MP,
     image_for_llm, pil_to_jpeg_b64, prepared_image,
     interrupted, check_interrupted, progress_bar, h3_temperature,
-    with_second_try, SECOND_TRY_TIP,
+    with_second_try, SECOND_TRY_TIP, format_details,
 )
 
 log = get_logger("enhancer.api")
@@ -332,6 +332,35 @@ def normalize_base_url(url, style):
     return url
 
 
+_SERVER_NAME = re.compile(r"[A-Za-z0-9_-]+")
+
+
+def resolve_base_url(spec, style):
+    """base_url as typed on the loader -> (url, server name or '').
+       ''            -> the style's local default
+       'openrouter'  -> that entry in Settings > Gadzoinks > LLM > 'LLM servers, named'
+       anything else -> used as written (a literal URL, as in older workflows)
+    A name keeps the address out of saved workflows and image metadata."""
+    spec = (spec or "").strip()
+    if spec and "://" not in spec:
+        named = parse_named_keys(get_setting("llm_servers", wait_seconds=2.0) or "")
+        if spec in named:
+            return normalize_base_url(named[spec], style), spec
+        if _SERVER_NAME.fullmatch(spec):
+            raise RuntimeError(
+                f"No LLM server named '{spec}'. Add it in Settings > Gadzoinks > LLM > "
+                f"'LLM servers, named' as {spec}=http://host:port/v1 (separate several with ';'), "
+                f"or type the full URL. Known names: {', '.join(sorted(named)) or 'none'}.")
+    return normalize_base_url(spec, style), ""
+
+
+def _local_server_label(url, style):
+    port = urllib.parse.urlsplit(url).port
+    if style in (API_OLLAMA_CHAT, API_OLLAMA_RAW) or port == 11434:
+        return "local Ollama"
+    return {8080: "local llama-server", 1234: "local LM Studio"}.get(port, "local server")
+
+
 def auto_thinking_field(base_url, style):
     if style == API_OLLAMA_CHAT:
         return "think"
@@ -381,7 +410,9 @@ class APIPromptEnhancer(PromptEnhancerBase):
         self.second_try = second_try
         self.image_megapixels = image_megapixels or DEFAULT_LLM_IMAGE_MP
         self.api = api
-        self.base_url = normalize_base_url(base_url, api)
+        # As typed: blank, a URL, or a server name looked up in Settings each time it is
+        # used, so editing the setting takes effect without re-running the loader.
+        self.base_url_spec = (base_url or "").strip()
         self.model = model.strip()
         self.api_key_name = api_key_name
         self.system_prompt_path = system_prompt_path
@@ -400,11 +431,35 @@ class APIPromptEnhancer(PromptEnhancerBase):
         self.timeout = timeout
         self.extra = json.loads(extra_json) if extra_json.strip() else {}
 
+    @property
+    def base_url(self):
+        return resolve_base_url(self.base_url_spec, self.api)[0]
+
     def _system_prompt(self):
         if not self.system_prompt_path:
             return ""
         with open(self.system_prompt_path, "r", encoding="utf-8") as f:
             return f.read().strip()
+
+    def describe(self, has_images):
+        url, name = resolve_base_url(self.base_url_spec, self.api)
+        host = (urllib.parse.urlsplit(url).hostname or "").lower()
+        if self.api == API_ANTHROPIC and host == "api.anthropic.com":
+            kind = "Claude API"
+        elif name:
+            kind = f"API {name}"
+        elif is_this_machine(url):
+            kind = _local_server_label(url, self.api)
+        else:
+            kind = f"API {host or url}"
+        temperature = h3_temperature(self.temperature, self._system_prompt(),
+                                     fixed=(self.api == API_ANTHROPIC and self.thinking == "on"))
+        if self.thinking == "model default":
+            # raw prompt styles think unless told not to; chat styles leave it to the server
+            thinking = "on" if self.api in RAW_STYLES else "default"
+        else:
+            thinking = self.thinking
+        return format_details(kind, self.model, self.system_prompt_path, temperature, thinking)
 
     def cache_key(self):
         try:
@@ -750,10 +805,14 @@ def _api_schema(edit):
             inputs=[
                 api_input,
                 io.String.Input("base_url", default="",
-                                tooltip="Server address. Blank = the style's local default "
+                                tooltip="Server address, or the name of one from Settings > "
+                                        "Gadzoinks > LLM > 'LLM servers, named' (like api_key_name). "
+                                        "A name keeps the address out of saved workflows and image "
+                                        "metadata. Blank = the style's local default "
                                         "(Ollama 127.0.0.1:11434, llama-server 127.0.0.1:8080, "
-                                        "api.anthropic.com). Examples: http://192.168.1.20:11434/v1, "
-                                        "https://api.openai.com/v1, https://openrouter.ai/api/v1, "
+                                        "api.anthropic.com). Examples: openrouter, "
+                                        "http://192.168.1.20:11434/v1, https://api.openai.com/v1, "
+                                        "https://openrouter.ai/api/v1, "
                                         "https://dashscope-intl.aliyuncs.com/compatible-mode/v1."),
                 io.String.Input("model", default="", tooltip=model_tip),
                 io.String.Input("api_key_name", default="",

@@ -127,12 +127,14 @@ def apply_settings(params):
     settings_updated.set()
     return skipped
 
-# LLM API keys for the API prompt enhancer loader (Settings > Gadzoinks > LLM)
-LLM_SETTING_KEYS = ("llm_api_key", "llm_api_keys")
+# LLM API keys and named server addresses for the API prompt enhancer loader
+# (Settings > Gadzoinks > LLM)
+LLM_SETTING_KEYS = ("llm_api_key", "llm_api_keys", "llm_servers")
 
 def is_secret_setting(key):
     k = key.lower()
-    return "apikey" in k or "api_key" in k
+    # llm_servers: private addresses, sometimes with a token in the URL
+    return "apikey" in k or "api_key" in k or k == "llm_servers"
 
 def masked_settings(settings):
     """Copy of a settings dict that is safe to print (API keys hidden)."""

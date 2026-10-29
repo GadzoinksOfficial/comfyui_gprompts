@@ -228,6 +228,18 @@ set to randomize still steps through the combinations.
   an Empty Latent Image instead; the encode node's `resolution` then has no effect.
 - `ratio_follow` - for edits, the reference image whose shape the output keeps (e.g. `image1`),
   as chosen by the LLM; width/height follow that image's shape.
+- `details_text` - one line on how the prompt was made, for a String Formatter or an image note:
+  `type, model, system prompt, temp, thinking`. Examples:
+  - `local GGUF, Qwen-Image-2.1-PE-T2I-Q8_0, system_prompt_T2I, temp 1.0, thinking on`
+  - `API openrouter, qwen/qwen3-235b-a22b, system_prompt_T2I, temp 1.0, thinking default`
+  - `Claude API, claude-sonnet-4-5, h3_t2va_system_prompt, temp 0.3, thinking off`
+
+  The type is `local GGUF`; `local Ollama`, `local llama-server`, `local LM Studio` or
+  `local server` for an API server on this machine; `Claude API` for api.anthropic.com;
+  `API <name>` when `base_url` is a server name (the address stays hidden); otherwise
+  `API <hostname>`. The temperature is the one actually sent, so the MiniMax H3 prompts show
+  0.3 when the loader is left at 1.0. Thinking is `on` or `off`; `default` means a chat style
+  left it to the server. With an Enhancer Pair it describes the loader this run used.
 
 ### Getting the models
 The Qwen-Image-2.1 prompt rewriters come as two separate models, one for text-to-image (**PE-T2I**)
@@ -330,6 +342,14 @@ workflows and image metadata):
 - *LLM API keys, named* - `openrouter=sk-or-...; dashscope=sk-...`; select one with
   `api_key_name` (e.g. `openrouter`).
 - `api_key_name` also accepts `env:VARIABLE` (read an environment variable) and `none`.
+
+**Server addresses** can be kept off the node the same way. Add them to Settings > Gadzoinks >
+LLM > *LLM servers, named* (`openrouter=https://openrouter.ai/api/v1; studio=http://192.168.1.20:11434/v1`)
+and type just the name in `base_url` (e.g. `studio`). Workflows and images shared from then on show
+the name, not the address. A full URL in `base_url` still works as before, and blank still means
+the style's local default. The name is looked up on every run, so changing the address in Settings
+needs no change to the workflow. `base_url` and `api_key_name` are separate: pick a key for a
+named server with `api_key_name` as usual.
 
 For Ollama, set `context_length` (Ollama's small default context silently truncates the 10 KB
 Qwen-Image system prompt) and use `keep_alive` = `0` to unload the model right after each call.

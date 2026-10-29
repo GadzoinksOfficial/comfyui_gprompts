@@ -22,6 +22,7 @@ const SETTING_MAP = {
     "Gadzoinks.immich.include.hostname": "immich_includehostname",
     "Gadzoinks.llm.api_key":             "llm_api_key",
     "Gadzoinks.llm.api_keys":            "llm_api_keys",
+    "Gadzoinks.llm.servers":             "llm_servers",
     "Gadzoinks.debug_logging":           "debug_logging",
 };
 
@@ -136,6 +137,19 @@ app.registerExtension({
             defaultValue: "",
             category: ["Gadzoinks", "LLM", "ApiKeys"],
             async onChange(value) { setbackendVariables({llm_api_keys: value}); }
+        },
+        {
+            // Server addresses for Prompt Enhancer Loader (API), picked by name in
+            // its base_url, so the address is not saved into workflows or images.
+            id: "Gadzoinks.llm.servers",
+            name: "LLM servers, named (name=url; name=url)",
+            tooltip: "Server addresses for Prompt Enhancer Loader (API), e.g. " +
+                     "openrouter=https://openrouter.ai/api/v1; studio=http://192.168.1.20:11434/v1 " +
+                     "Type the name in the loader's base_url.",
+            type: "text",
+            defaultValue: "",
+            category: ["Gadzoinks", "LLM", "Servers"],
+            async onChange(value) { setbackendVariables({llm_servers: value}); }
         },
         {
             // Debug detail in the ComfyUI console. Turn on when reporting a problem.

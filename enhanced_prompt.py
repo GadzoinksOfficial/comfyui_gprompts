@@ -213,6 +213,18 @@ class PromptEnhancerBase:
         """images: list of ComfyUI IMAGE tensors [1,H,W,C] (edit enhancers only)."""
         raise NotImplementedError
 
+    def describe(self, has_images) -> str:
+        """One line on how the prompt was made, for the details_text output:
+        '<type>, <model>, <system prompt>, temp <t>, thinking <on/off>'. Never
+        contains an API key or a server address that was given by name."""
+        return ""
+
+
+def format_details(kind, model, system_prompt_path, temperature, thinking):
+    prompt = (os.path.splitext(os.path.basename(system_prompt_path))[0]
+              if system_prompt_path else "no system prompt")
+    return f"{kind}, {model}, {prompt}, temp {round(float(temperature), 2)}, thinking {thinking}"
+
 
 class EnhancerPair(PromptEnhancerBase):
     """A text-to-image enhancer and an image-edit enhancer behind one output:
@@ -251,6 +263,9 @@ class EnhancerPair(PromptEnhancerBase):
     def enhance(self, user_text, seed, images=None):
         chosen = self._pick(bool(images))
         return chosen.enhance(user_text, seed, images=images) if images else chosen.enhance(user_text, seed)
+
+    def describe(self, has_images):
+        return self._pick(has_images).describe(has_images)
 
 
 # ----------------------------------------------------------------------------
@@ -758,6 +773,14 @@ class GGUFPromptEnhancer(PromptEnhancerBase):
 
     def gpu_in_process(self, has_images):
         return self.gpu_layers != 0
+
+    def describe(self, has_images):
+        model = os.path.basename(self.model_path)
+        if model.lower().endswith(".gguf"):
+            model = model[:-5]
+        temperature = h3_temperature(self.temperature, self._system_prompt())
+        return format_details("local GGUF", model, self.system_prompt_path, temperature,
+                              "on" if self.enable_thinking else "off")
 
     def enhance(self, user_text, seed, images=None):
         with _LLM_LOCK:
@@ -1770,6 +1793,13 @@ class GPromptsEnhanced(io.ComfyNode):
                 io.String.Output("ratio_follow", display_name="ratio_follow",
                                  tooltip="Edit: which reference image's shape the output keeps "
                                          "(e.g. image1), as chosen by the LLM. Empty otherwise."),
+                # last, so saved workflows keep their links
+                io.String.Output("details_text", display_name="details_text",
+                                 tooltip="How the prompt was made, for String Formatter or notes: "
+                                         "type, model, system prompt, temperature, thinking, e.g. "
+                                         "'API openrouter, qwen3:8b, system_prompt_T2I, temp 1.0, "
+                                         "thinking on'. Server addresses given by name stay "
+                                         "hidden; API keys never appear."),
             ],
             hidden=[io.Hidden.unique_id, io.Hidden.prompt, io.Hidden.extra_pnginfo],
         )
@@ -1928,9 +1958,14 @@ class GPromptsEnhanced(io.ComfyNode):
             width, height = edit_canvas(result, refs, target_megapixels)
         else:
             width, height = canvas_size(result.wh_ratio, target_megapixels)
+        try:
+            details = enhancer.describe(bool(refs))
+        except Exception as e:      # documentation only: never fail the run over it
+            log.warning(f"GPromptsEnhanced: could not build details_text: {e}")
+            details = ""
         return io.NodeOutput(final, expanded, final, seed, text, result.wh_ratio,
                              width, height, square_resolution(target_megapixels),
-                             result.ratio_follow)
+                             result.ratio_follow, details)
 
 
 ENHANCED_NODES = {
