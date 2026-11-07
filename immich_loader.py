@@ -366,7 +366,8 @@ class GLoadImageFromImmich(cio.ComfyNode):
             category="gprompts/immich",
             description=(
                 "Steps through the Immich images that pass every filter you set (album, tag, "
-                "favorites, minimum rating), one per run (index with 'increment'). Downloads the "
+                "favorites, minimum rating), one per run (index with 'increment'), or loads one "
+                "image by its asset_id. Downloads the "
                 "original on the ComfyUI server and reads "
                 "the prompt it was made with (GPrompts/ComfyUI metadata, or A1111 parameters). "
                 "Server and API key come from Settings > Gadzoinks."
@@ -393,6 +394,12 @@ class GLoadImageFromImmich(cio.ComfyNode):
                                 tooltip=MAX_MEGAPIXELS_TOOLTIP),
                 cio.Combo.Input("aspect", options=ASPECT_OPTIONS, default="free",
                                 tooltip=ASPECT_TOOLTIP),
+                # Last, and optional, so workflows saved before it existed load unchanged.
+                cio.String.Input("asset_id", default="", optional=True,
+                                 tooltip="Load exactly this Immich asset (its id, as in the Immich "
+                                         "URL /photos/<id>). When set, album, tag, favorites, "
+                                         "rating and index are ignored. Apps like GZViewer set it "
+                                         "to pick a reference image."),
             ],
             outputs=[
                 cio.Image.Output("image", display_name="image"),
@@ -419,15 +426,18 @@ class GLoadImageFromImmich(cio.ComfyNode):
         )
 
     @classmethod
-    def validate_inputs(cls, album="", tag="", favorites_only=False, min_rating="any", **kwargs):
+    def validate_inputs(cls, album="", tag="", favorites_only=False, min_rating="any", asset_id="",
+                        **kwargs):
+        if (asset_id or "").strip():
+            return True
         if not ((album or "").strip() or (tag or "").strip() or favorites_only
                 or parse_min_rating(min_rating)):
-            return "Set at least one filter: album, tag, favorites_only or min_rating."
+            return "Set at least one filter (album, tag, favorites_only or min_rating), or an asset_id."
         return True
 
     @classmethod
     def execute(cls, album, tag, favorites_only, min_rating, index, max_megapixels=0.0,
-                aspect="free") -> cio.NodeOutput:
+                aspect="free", asset_id="") -> cio.NodeOutput:
         settings = get_immich_settings()
         missing = get_missing(settings)
         if missing:
@@ -437,16 +447,25 @@ class GLoadImageFromImmich(cio.ComfyNode):
         url = f"http://{settings.get('immich_hostname')}:{settings.get('immich_port')}"
         importer = ImmichImporter(url, settings.get("immich_apikey"), importer_name="GLoadImageFromImmich")
         album, tag = (album or "").strip(), (tag or "").strip()
-        stars = parse_min_rating(min_rating)
-        key = (url, album.lower(), tag.lower(), bool(favorites_only), stars)
+        asset_id = (asset_id or "").strip()
         try:
-            if index == 0 or key not in _ASSET_LISTS:
-                _ASSET_LISTS[key] = list_images(importer, album, tag, bool(favorites_only), stars)
-            label, assets = _ASSET_LISTS[key]
-            if not assets:
-                raise ValueError(f"Load From Immich: no images match {label}.")
-            used = index % len(assets)
-            asset = assets[used]
+            if asset_id:
+                # One specific image: the filters and index don't apply.
+                asset = importer.get_asset(asset_id)
+                if str(asset.get("type") or "IMAGE").upper() != "IMAGE":
+                    raise ValueError(f"Load From Immich: asset {asset_id} is a "
+                                     f"{str(asset.get('type')).lower()}, not an image.")
+                label, assets, used = f"asset {asset_id}", [asset], 0
+            else:
+                stars = parse_min_rating(min_rating)
+                key = (url, album.lower(), tag.lower(), bool(favorites_only), stars)
+                if index == 0 or key not in _ASSET_LISTS:
+                    _ASSET_LISTS[key] = list_images(importer, album, tag, bool(favorites_only), stars)
+                label, assets = _ASSET_LISTS[key]
+                if not assets:
+                    raise ValueError(f"Load From Immich: no images match {label}.")
+                used = index % len(assets)
+                asset = assets[used]
             img, src, info, used_file, fit = load_asset(importer, asset, max_megapixels, aspect)
         except ImmichError as e:
             raise ValueError(f"Load From Immich: {e}") from e

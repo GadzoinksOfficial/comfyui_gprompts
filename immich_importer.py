@@ -465,7 +465,7 @@ class ImmichImporter:
     # ------------------------------------------------------------------
     PERMISSION_HINT = {
         "albums": "album.read", "tags": "tag.read", "search": "asset.read",
-        "original": "asset.download", "thumbnail": "asset.view",
+        "original": "asset.download", "thumbnail": "asset.view", "asset": "asset.read",
     }
 
     def _request(self, method, path, timeout, **kwargs):
@@ -534,6 +534,10 @@ class ImmichImporter:
             except (TypeError, ValueError):
                 page += 1
         return items
+
+    def get_asset(self, asset_id):
+        """One asset with its EXIF, people and tags (GET /assets/{id})."""
+        return self._get_json("GET", f"/assets/{asset_id}", "asset")
 
     def download_original(self, asset_id, timeout=120):
         return self._download(f"/assets/{asset_id}/original", "original", timeout)

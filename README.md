@@ -812,6 +812,10 @@ case-sensitive; one that isn't found gives an error listing the albums or tags t
 
 - **index**: which image, oldest first by date taken; wraps around. Leave the control under it on
   `increment` and queue as many runs as the `count` output says. Videos are skipped.
+- **asset_id** (optional): load exactly this asset, by its Immich id (the part after `/photos/` in
+  the Immich URL). When it's set, the filters and index are ignored and no filter is required.
+  This is how an app such as GZViewer picks a reference image for a workflow; leave it blank for
+  normal use.
 - The list is read from Immich when the index is 0 and kept for the rest of the batch, so photos
   added to the album mid-batch don't shift the numbering. They are picked up at the next run from 0.
 - **max_megapixels**, **aspect**: scale and center-crop each image, as in *Load Images From Folder*
