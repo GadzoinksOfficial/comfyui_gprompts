@@ -172,6 +172,22 @@ The **enhance** setting picks how often the LLM runs:
   beach hut with red lanterns at dusk". This only works while the LLM keeps the values as words
   that can be swapped. If it rewords or elaborates them ("add a dinosaur" becomes "a towering
   sauropod..."), later runs can't swap in their value; use **every run** for prompts like that.
+- **reuse stored** - no LLM call and no new expansion. The node outputs the prompt, aspect ratio
+  and size that an earlier run saved in the workflow, exactly as they were. This is for
+  re-rendering a saved image with one change (upscaling switched on, a different sampler): load
+  the prompt embedded in the image, set **reuse stored**, and the same picture comes back, provided
+  the sampler seed is unchanged too. GZViewer selects it for you when you render from an image.
+  - What is stored: every run writes its final prompt (trigger words included), its expansion,
+    `wh_ratio`, `ratio_follow`, width, height and megapixels into the queued prompt, which the save
+    nodes embed in the image. Changing `target_megapixels` keeps the stored aspect ratio.
+  - It enhances as **every run** instead (and logs why) when nothing is stored, or when the text,
+    seed, delimiter style or trigger words differ from what the stored prompt was made from.
+  - A workflow queued from the ComfyUI page carries no stored prompt, so there this mode behaves
+    like **every run**. It works on prompts sent through the API (`/prompt`) that came out of a
+    saved image.
+  - Images saved by an older version have the prompt but not the size. They are reused at 1:1
+    unless `wh_ratio` is put in the node's `_meta` (GZViewer fills it in from the image's own
+    width and height).
 
 With **every run**, **prefetch_next** hides most of the LLM's time: as soon as a run's prompt is
 out, the node expands the next run and starts rewriting it on a background thread, so the LLM works

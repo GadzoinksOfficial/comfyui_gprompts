@@ -1684,9 +1684,87 @@ def _stop_prefetch(state):
 
 ENHANCE_EVERY_RUN = "every run"
 ENHANCE_ONCE = "once, then substitute"
-ENHANCE_MODES = [ENHANCE_EVERY_RUN, ENHANCE_ONCE]
+ENHANCE_REUSE = "reuse stored"
+ENHANCE_MODES = [ENHANCE_EVERY_RUN, ENHANCE_ONCE, ENHANCE_REUSE]
 PREFETCH_AUTO, PREFETCH_ON, PREFETCH_OFF = "auto", "on", "off"
 PREFETCH_MODES = [PREFETCH_AUTO, PREFETCH_ON, PREFETCH_OFF]
+
+
+def source_fingerprint(text, delimiter_style, seed, trigger_words):
+    """Identifies what a stored prompt was made from, so 'reuse stored' can tell when
+    the template, seed or trigger words have changed since."""
+    blob = json.dumps([text or "", delimiter_style or "", int(seed or 0), trigger_words or ""],
+                      ensure_ascii=False)
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
+
+
+def stored_prompt(node, fingerprint):
+    """What an earlier run of this node left in the queued prompt (a prompt read back
+    from a saved image carries it): (record, None), or (None, why it can't be reused).
+
+    record: prompt, dynamic_prompt, wh_ratio, ratio_follow, and width/height/megapixels
+    when that run saved them (None otherwise)."""
+    node = node if isinstance(node, dict) else {}
+    inputs = node.get("inputs") if isinstance(node.get("inputs"), dict) else {}
+    meta = node.get("_meta") if isinstance(node.get("_meta"), dict) else {}
+    text = inputs.get("computed_prompt")
+    if not isinstance(text, str) or not text.strip():
+        text = meta.get("computed_prompt")
+    if not isinstance(text, str) or not text.strip():
+        return None, "no stored prompt in this workflow"
+    saved = meta.get("source")
+    if isinstance(saved, str) and saved and saved != fingerprint:
+        return None, "the text, seed or trigger words changed since the prompt was stored"
+
+    def text_of(key):
+        value = meta.get(key)
+        return value if isinstance(value, str) else ""
+
+    def int_of(key):
+        value = meta.get(key)
+        return int(value) if isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0 else None
+
+    megapixels = meta.get("megapixels")
+    return {
+        "prompt": text,
+        "dynamic_prompt": text_of("dynamic_prompt"),
+        "wh_ratio": text_of("wh_ratio"),
+        "ratio_follow": text_of("ratio_follow"),
+        "width": int_of("width"),
+        "height": int_of("height"),
+        "megapixels": str(megapixels) if megapixels is not None else None,
+    }, None
+
+
+def stored_canvas(record, megapixels):
+    """Width/height for a reused prompt: the stored size when the megapixels are the
+    same as then, else the stored ratio at the new megapixels. None if neither was stored."""
+    sized = record["width"] and record["height"]
+    if sized and (record["megapixels"] is None or record["megapixels"] == str(megapixels)):
+        return record["width"], record["height"]
+    if ratio_to_pair(record["wh_ratio"]):
+        return canvas_size(record["wh_ratio"], megapixels)
+    if sized:       # an edit that followed a reference image: keep that shape
+        return canvas_size(f"{record['width']}:{record['height']}", megapixels)
+    return None
+
+
+def remember_run(node, final, expanded, fingerprint, wh_ratio, ratio_follow, width, height, megapixels):
+    """Write a run's prompt and size into the queued prompt, which the save nodes embed
+    in the image: that is what 'reuse stored' (and the Immich notes) read back."""
+    node.setdefault("inputs", {})["computed_prompt"] = final
+    meta = node.get("_meta") if isinstance(node.get("_meta"), dict) else {}
+    meta.update({
+        "computed_prompt": final,
+        "dynamic_prompt": expanded,
+        "source": fingerprint,
+        "wh_ratio": wh_ratio or "",
+        "ratio_follow": ratio_follow or "",
+        "width": int(width),
+        "height": int(height),
+        "megapixels": str(megapixels),
+    })
+    node["_meta"] = meta
 
 
 class GPromptsEnhanced(io.ComfyNode):
@@ -1744,7 +1822,13 @@ class GPromptsEnhanced(io.ComfyNode):
                                        "LLM call per image; always correct). 'once, then "
                                        "substitute': one LLM call per batch, later runs swap "
                                        "their values into the first rewrite (fast, but fails "
-                                       "when the LLM rewords a value, e.g. dinosaur -> sauropod)."),
+                                       "when the LLM rewords a value, e.g. dinosaur -> sauropod). "
+                                       "'reuse stored': no LLM call; outputs the prompt and size "
+                                       "saved in the queued workflow by the run that made an "
+                                       "image, exactly as they were. For re-rendering a saved "
+                                       "image's workflow with one change (e.g. upscaling on). "
+                                       "Enhances as 'every run' when nothing is stored or the "
+                                       "text, seed or trigger words have changed."),
                 io.Combo.Input("prefetch_next", options=PREFETCH_MODES, default=PREFETCH_AUTO,
                                tooltip="'every run' only: as soon as a run's prompt is out, start "
                                        "rewriting the next run's prompt in the background, so "
@@ -1849,6 +1933,47 @@ class GPromptsEnhanced(io.ComfyNode):
         return _Prefetch(iteration, expanded, values, seed, work)
 
     @classmethod
+    def _reuse(cls, record, queued, fingerprint, enhancer, refs, text, seed,
+               target_megapixels, unique_id, workflow_id) -> io.NodeOutput:
+        """'reuse stored': the prompt and size an earlier run saved, with no LLM call and
+        no new expansion. The batch state is left alone, so going back to another mode
+        carries on where it was."""
+        final = record["prompt"]        # trigger words are already in it
+        expanded = record["dynamic_prompt"]
+        size = stored_canvas(record, target_megapixels)
+        if size is None and refs:
+            # Stored before sizes were saved: an edit can still follow its reference image.
+            size = edit_canvas(EnhanceResult(final, "", "", "", True, record["ratio_follow"]),
+                               refs, target_megapixels)
+        if size is None:
+            size = canvas_size("", target_megapixels)
+            log.warning(f"GPromptsEnhanced (node {unique_id}): the stored prompt has no size "
+                        f"with it (saved by an older version), so width/height are 1:1. Put "
+                        f"wh_ratio in the node's _meta, or enhance again, for the original shape.")
+        width, height = size
+        log.info(f"GPromptsEnhanced (node {unique_id}): reusing the stored prompt, {width}x{height}; no LLM call")
+
+        if workflow_id:
+            promtpForId[workflow_id] = final
+        try:
+            PromptServer.instance.send_sync("gprompts_executed",
+                                            {"node_id": unique_id, "result": final})
+        except Exception as e:
+            log.debug(f"GPromptsEnhanced: could not update UI: {e}")
+        if isinstance(queued, dict):
+            remember_run(queued, final, expanded, fingerprint, record["wh_ratio"],
+                         record["ratio_follow"], width, height, target_megapixels)
+        try:
+            details = enhancer.describe(bool(refs))
+            details = f"{details} (stored prompt reused)" if details else "stored prompt reused"
+        except Exception as e:
+            log.warning(f"GPromptsEnhanced: could not build details_text: {e}")
+            details = "stored prompt reused"
+        return io.NodeOutput(final, expanded, final, seed, text, record["wh_ratio"],
+                             width, height, square_resolution(target_megapixels),
+                             record["ratio_follow"], details)
+
+    @classmethod
     def execute(cls, enhancer, text, delimiter_style, seed, trigger_words="",
                 preserve_dynamic_words=True, target_megapixels=DEFAULT_MEGAPIXELS,
                 enhance=ENHANCE_EVERY_RUN, prefetch_next=PREFETCH_AUTO,
@@ -1862,9 +1987,20 @@ class GPromptsEnhanced(io.ComfyNode):
             delimiter_style = DynamicPromptEngine.DEFAULT_DELIM_STYLE
         if enhance not in ENHANCE_MODES:
             enhance = ENHANCE_EVERY_RUN
-        every_run = enhance == ENHANCE_EVERY_RUN
         refs = images_from_autogrow(images)
         enhancer.check_task(bool(refs))
+        fingerprint = source_fingerprint(text, delimiter_style, seed, trigger_words)
+        queued = prompt.get(unique_id) if isinstance(prompt, dict) else None
+
+        if enhance == ENHANCE_REUSE:
+            record, why = stored_prompt(queued, fingerprint)
+            if record is not None:
+                return cls._reuse(record, queued, fingerprint, enhancer, refs, text, seed,
+                                  target_megapixels, unique_id, workflow_id)
+            log.warning(f"GPromptsEnhanced (node {unique_id}): enhance is 'reuse stored', but "
+                        f"{why}; enhancing as 'every run' instead.")
+            enhance = ENHANCE_EVERY_RUN
+        every_run = enhance == ENHANCE_EVERY_RUN
         # Like Dynamic Prompts, the seed is not part of the key: it only drives
         # random blocks (seed + iteration). A seed set to randomize must not
         # restart the batch, or every run would be the first expansion.
@@ -1946,18 +2082,13 @@ class GPromptsEnhanced(io.ComfyNode):
                                             {"node_id": unique_id, "result": final})
         except Exception as e:
             log.debug(f"GPromptsEnhanced: could not update UI: {e}")
-        if prompt is not None and unique_id in prompt:
-            node = prompt[unique_id]
-            node.setdefault("inputs", {})["computed_prompt"] = final
-            meta = node.get("_meta", {})
-            meta["computed_prompt"] = final
-            meta["dynamic_prompt"] = expanded
-            node["_meta"] = meta
-
         if refs:
             width, height = edit_canvas(result, refs, target_megapixels)
         else:
             width, height = canvas_size(result.wh_ratio, target_megapixels)
+        if isinstance(queued, dict):
+            remember_run(queued, final, expanded, fingerprint, result.wh_ratio,
+                         result.ratio_follow, width, height, target_megapixels)
         try:
             details = enhancer.describe(bool(refs))
         except Exception as e:      # documentation only: never fail the run over it
